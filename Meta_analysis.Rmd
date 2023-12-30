@@ -1,0 +1,171 @@
+---
+title: "Meta_analysis"
+author: "BENJAMIN"
+date: "12/27/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Load the Data and Structure it
+```{r cars}
+library(ggplot2)
+library(ggrepel)
+# Define color palette
+my_colors <- c(
+  "#FAD510",  # Mustard Yellow (The Royal Tenenbaums)
+  "cyan",  # cyan
+  "#008080",  # Teal
+  "#E9A368",  # Salmon Orange (Fantastic Mr. Fox)
+  "lightpink",  #pink
+  "#81A3A7",  # Steel Blue (The Life Aquatic with Steve Zissou)
+  "green",  # Dusty Lavender (Hotel Chevalier)
+  "#FF00FF",  # Magenta
+  "#FF2400",  # Scarlet
+  "#90A959",  # Olive Green (Isle of Dogs)
+  "#9D858D",  # Mauve (Castello Cavalcanti)
+  "#A4243B",  # Deep Carmine (Mr. Fox's Tail)
+  "#C6C8CA",   # Light Gray (The French Dispatch)
+  "#6495ED",  # cornflowerblue
+  "#5B1A18",  # Maroon (The Grand Budapest Hotel)
+  "#1B2021"   # Off Black (The Life Aquatic with Steve Zissou)
+)
+##Read the data and structure the dataframe
+HDL_across_pops <- import("/Users/bm0211/RegEx/Turkana_CVD/Meta_analysis_Data_and_Results.xlsx", which = "Meta_analysis_Data")
+SetmissingValues(HDL_across_pops)
+names(HDL_across_pops)[4]= "Name_of_Cohort"
+names(HDL_across_pops)[6]= "Participants_number"
+names(HDL_across_pops)[7]= "HDL_Mean"
+names(HDL_across_pops)[8]= "HDL_sd"
+names(HDL_across_pops)[9]= "LDL_Mean"
+names(HDL_across_pops)[10]= "LDL_sd"
+names(HDL_across_pops)[11]= "Chol_Mean"
+names(HDL_across_pops)[12]= "Chol_sd"
+names(HDL_across_pops)[13]= "Trig_Mean"
+names(HDL_across_pops)[14]= "Trig_sd"
+names(HDL_across_pops)[15]= "Systolic_Mean"
+names(HDL_across_pops)[16]= "Systolic_sd"
+names(HDL_across_pops)[17]= "Diastolic_Mean"
+names(HDL_across_pops)[18]= "Diastolic_sd"
+names(HDL_across_pops)[19]= "BMI_mean"
+names(HDL_across_pops)[20]= "BMI_sd"
+names(HDL_across_pops)[21]= "Body_fat_mean"
+names(HDL_across_pops)[22]= "Body_fat_sd"
+## Convert to Numeric
+numeric_vars <- c("HDL_Mean", "HDL_sd", "Participants_number", "LDL_Mean", "LDL_sd", "Chol_Mean", 
+                  "Chol_sd", "Systolic_Mean", "Systolic_sd", "Diastolic_Mean", "Diastolic_sd", 
+                  "Trig_Mean", "Trig_sd", "BMI_mean", "BMI_sd")
+
+HDL_across_pops[numeric_vars] <- lapply(HDL_across_pops[numeric_vars], as.numeric)
+dim(HDL_across_pops)
+```
+## HDL Plot
+```{r pressure, echo=FALSE}
+## Replace values with Chol, HDL, LDL as needed
+## Remove NA
+Meta_analysis_data <- HDL_across_pops[!is.na(HDL_across_pops$HDL_sd),]
+Meta_analysis_data <- Meta_analysis_data[!is.na(Meta_analysis_data$HDL_Mean),]
+Meta_analysis_data <- Meta_analysis_data %>%
+  mutate(Name_of_Cohort = fct_reorder(Name_of_Cohort, HDL_Mean))
+
+Thewholeplot <- Meta_analysis_data %>%
+  ggplot(aes(x = Name_of_Cohort, y = HDL_Mean, fill = Ancestry)) +
+  geom_point(size = 8, shape = 21, color = "white") + # Shape 21 for filled points
+  geom_errorbar(aes(ymin = HDL_Mean - HDL_sd, ymax = HDL_Mean + HDL_sd), width = 0.2) +
+  labs(title = "HDL Levels across populations", x = "Name_of_Cohort", y = "HDL Level (mg/dL)") +
+  scale_fill_manual(values = my_colors) +
+  geom_label_repel(aes(label = Label, fill = Ancestry), color = "white",
+                   box.padding = 0.35,
+                   point.padding = 0.5,
+                   segment.color = 'grey50', 
+                   max.overlaps = 15) + 
+  geom_hline(yintercept = 40) + 
+  geom_hline(yintercept = 60) + 
+  ggtheme + coord_flip()
+
+##Save file as PNG
+ggsave("POPS_HDL.png", Thewholeplot, width = 30, height = 50, units = "cm", dpi = 300)
+```
+## LDL Plot
+```{r pressure, echo=FALSE}
+FOR_ldl = Meta_analysis_data[!is.na(Meta_analysis_data$LDL_Mean),]
+##
+Thewholeplot1 = ggplot(FOR_ldl, aes(x= fct_reorder(Name_of_Cohort, LDL_Mean), y = LDL_Mean, fill =Ancestry)) + 
+  geom_point(size=8, shape = 21, color = "white") + 
+  geom_errorbar(aes(ymin=LDL_Mean-LDL_sd, ymax=LDL_Mean+LDL_sd, width=0.2)) + 
+  labs(title = "LDL Variation across populations", x="Name_of_Cohort", y=" LDL Level (mg/dL)") +
+  scale_fill_manual(values = my_colors) + 
+  geom_label_repel(aes(label = Label, fill = Ancestry), color = "white",
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50',
+                  max.overlaps = 15) +
+  geom_hline(yintercept = 100) + 
+  geom_hline(yintercept = 120) +
+  ggtheme + coord_flip()
+##Save file as PNG
+ggsave("POPS_LDL.png", Thewholeplot1, width = 30, height = 50, units = "cm", dpi = 300)
+```
+
+## Cholesterol
+```{r pressure, echo=FALSE}
+FOR_Chol = Meta_analysis_data[!is.na(Meta_analysis_data$Chol_Mean),]
+##
+Thewholeplot2 = ggplot(FOR_Chol, aes(x= fct_reorder(Name_of_Cohort, Chol_Mean), y = Chol_Mean, fill =Ancestry)) + 
+  geom_point(size=8, shape = 21, color = "white") + 
+  geom_errorbar(aes(ymin=Chol_Mean-Chol_sd, ymax=Chol_Mean+Chol_sd, width=.2)) + 
+  labs(title = "Cholesterol Variation across populations", x="Name_of_Cohort", y=" Chol Level (mg/dL)") + 
+  scale_fill_manual(values = my_colors) + 
+  geom_label_repel(aes(label = Label, fill = Ancestry), color = "white",
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50',
+                  max.overlaps = 15) +
+  geom_hline(yintercept = 200) +
+  ggtheme + coord_flip()
+##Save file as PNG
+ggsave("POPSCholesterol.png", Thewholeplot2, width = 30, height = 50, units = "cm", dpi = 300)
+```
+## LDL/HDL Ratio
+```{r pressure, echo=FALSE}
+## This is Calculation of LDL/HDL Ratio
+Meta_analysis_data$LDL_HDL_Ratio <- Meta_analysis_data$LDL_Mean / Meta_analysis_data$HDL_Mean
+##
+Thewholeplot3 <- ggplot(Meta_analysis_data, aes(x= fct_reorder(Name_of_Cohort, LDL_HDL_Ratio), y = LDL_HDL_Ratio, fill =Ancestry)) + 
+  geom_point(size=8, shape = 21, color = "white") + 
+  labs(title = "LDL_HDL_Ratio Variation across populations", x="Name_of_Cohort", y="LDL/HDL Ratio") + 
+  scale_fill_manual(values = my_colors) + 
+  geom_label_repel(aes(label = Label, fill = Ancestry), color = "white",
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50',
+                  max.overlaps = 15) + coord_flip()
+
+Thewholeplot3 <- Thewholeplot3 + geom_hline(yintercept = 2) + ggtheme
+
+##Save file as PNG
+ggsave("RatioHDLnLDL.png", Thewholeplot3, width = 30, height = 50, units = "cm", dpi = 300)
+```
+# Pulse Pressure
+```{r pressure, echo=FALSE}
+## This is Calculation of Pulse pressure
+HDL_across_pops$Pulse_Pressure <- HDL_across_pops$Systolic_Mean - HDL_across_pops$Diastolic_Mean
+##
+FOR_pressure = HDL_across_pops[!is.na(HDL_across_pops$Pulse_Pressure),]
+##
+Thewholeplot4 <- ggplot(FOR_pressure, aes(x= fct_reorder(Name_of_Cohort, Pulse_Pressure), y = Pulse_Pressure, fill =Ancestry)) + 
+  geom_point(size=8, shape = 21, color = "white") + 
+  labs(title = "Pulse Pressure Variation across populations", x="Name_of_Cohort", y="Pulse_Pressure (mmHg)") + 
+  scale_fill_manual(values = my_colors) + 
+  geom_label_repel(aes(label = Label, fill = Ancestry), color = "white",
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50',
+                  max.overlaps = 15) + coord_flip()
+
+Thewholeplot4 <- Thewholeplot4 + geom_hline(yintercept = 40) + geom_hline(yintercept = 60) + ggtheme
+
+##Save file as PNG
+ggsave("POPS_PulseP.png", Thewholeplot4, width = 30, height = 50, units = "cm", dpi = 300)
+```

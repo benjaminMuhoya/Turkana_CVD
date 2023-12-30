@@ -1,0 +1,77 @@
+---
+output:
+  reprex::reprex_document:
+    venue: "gh"
+    advertise: FALSE
+    session_info: TRUE
+    style: TRUE
+    comment: "#;-)"
+    tidyverse_quiet: FALSE
+    std_out_err: TRUE
+knit: reprex::reprex_render
+---
+## Import the relevant files
+## Clean Metadata
+## GeneIDs from FAM file
+```{r}
+setwd("~/RegEx/Turkana_stuff")
+library(tidyverse)
+library(rio)
+library(here)
+library(reshape2)
+## Import the needed files
+Gene_IDs = import("Gene_IDs.csv", header = TRUE)
+Clean_meta = import("Cleaned_metadata_file.csv")
+colnames(Clean_meta)
+
+Gene_IDs <- import("/Users/bm0211/RegEx/Turkana_stuff/Gene_IDs.csv")
+Gene_IDs[c('BARCODE','ID')] <- str_split_fixed(Gene_IDs$BARCODE_ID, '_', 2)
+Gene_IDs <- Gene_IDs %>%
+  unite("Unique.gene.ID", 1:2, sep= "_",remove = FALSE)
+dim(Gene_IDs)
+head(Gene_IDs)
+## Merge
+Metadata_gene <- merge(Gene_IDs, Clean_meta, by = "BARCODE", all.x = TRUE)
+dim(Metadata_gene)
+Metadata_gene <- Metadata_gene[which(Metadata_gene$Pulse_pressure != "NA"),]
+Metadata_gene <- Metadata_gene %>% distinct(Unique.ID, .keep_all = TRUE)
+colnames(Metadata_gene)
+dim(Metadata_gene)
+
+Metadata_gene[c('DATEsss','barcodesss','IDsss')] <- str_split_fixed(Metadata_gene$Unique.ID, '_', 3)
+dim(Metadata_gene)
+Metadata_gene <- Metadata_gene %>%
+  unite("Barcode_IDsss", 81:82, sep= "_",remove = FALSE)
+dim(Metadata_gene)
+colnames(Metadata_gene)
+table(Metadata_gene$Barcode_IDsss)
+ped_df <- data.frame(family_id= Metadata_gene$FAM_ID,
+  indiv_id = Metadata_gene$BARCODE_ID,
+  paternal_id= "-9",
+  maternal_id= "-9", 
+  sex = Metadata_gene$Gender, 
+  pheno = Metadata_gene$Pulse_pressure, 
+  Age = Metadata_gene$Age,
+  Unique_ID = Metadata_gene$Unique.ID,
+  barcode_IDsss = Metadata_gene$Barcode_IDsss)
+head(ped_df)
+dim(ped_df)
+
+
+##Coding SEX into 1s and 2s --> I had a code to scale the Pheno after coercing it to as.numeric ...but there wasn't much of a difference so i used the raw values
+ped_df$pheno <- as.numeric(ped_df$pheno)
+ped_df <- ped_df %>% mutate (`sex` = recode(`sex` , "Male"="1", "Female"="2"))
+
+##Writing the PED.FILE
+##First removed the Duplicates
+ped_df$pheno <- na.omit(ped_df$pheno)
+head(ped_df)
+dim(ped_df)
+##Write the .phen file and use it with GCTA
+write.table(ped_df, file = "Pulse_pressure_Unique.phen",row.names = FALSE, quote=FALSE)
+
+Covar <- select(ped_df, c("family_id","indiv_id","sex","Age"))
+head(Covar)
+write.table(Covar, file = "Covar_Unique.txt",row.names = FALSE, quote=FALSE)
+
+```

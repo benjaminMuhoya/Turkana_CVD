@@ -1,0 +1,102 @@
+# Install and load the plink package
+install.packages("plink")
+library(plink)
+library(genio)
+install.packages("qqman")
+library(qqman)
+library(DataCombine)
+install.packages("DataCombine")
+SetmissingValues <- function(x) {
+  x[x == "N/A"] <- NA
+  x[x == " "] <- NA
+  x[x == "-"] <- NA
+  x[x == "_"] <- NA
+  x[x == ""] <- NA
+  x[x == "   "] <- NA
+  x[x == " -"] <- NA
+  x[x == "other/not answered"] <- NA
+  x[x == "N/AN/A"] <- NA
+  x[x == ","] <- NA
+  x[x == "NaN"] <- NA
+  x
+}
+#####
+res3<-read.table("assossChol.mlma", header=T)
+dim(res3)
+head(res3)
+chi<-(qchisq(1-res3$p,1))
+lambda=median(chi)/0.456
+lambda
+
+new3<-data.frame(res3$SNP, res3$Chr, res3$bp, res3$p)
+SetmissingValues(new3)
+dim(new3)
+new3 <- DropNA(new3)
+names(new3)<-c("SNP", "CHR", "BP", "P")
+head(new3)
+png("GWASqqplotChol_Covar.png")
+qq(new3$P)
+dev.off()
+pdf("GWASmanhattan.pdf")
+manhattan(new3, pch=20, suggestiveline=F, genomewideline=F, cex=0.5)
+dev.off()
+# Set the path to your PLINK binary files (bed, bim, fam)
+plink_path <- "/Users/bm0211/RegEx/cleanedGeno_9batches"
+
+# Read in the PLINK files
+plink_data <- genio::read_plink(plink_path)
+# Read in the phenotype file
+phenotype_data <- read.table("/Users/bm0211/RegEx/HDL_Unique.phen", header = TRUE)
+colnames(phenotype_data)
+phenotype_data <- select(phenotype_data, c(1:7))
+dim(phenotype_data)
+head(phenotype_data)
+head(plink_data)
+system("plink --bfile plink_data --assoc --out results")
+
+# Merge genotype and phenotype data
+merged_data <- merge(plink_data$fam, phenotype_data, by.x = "id", by.y = "indiv_id")
+
+# Run association analysis
+gwas_result <- plink(merged_data, formula = "pheno", model = "linear")
+
+# Display GWAS results
+summary(gwas_result)
+
+
+# Install required packages if not already installed
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("qqman", quietly = TRUE)) {
+  install.packages("qqman")
+}
+if (!requireNamespace("gctaUtils", quietly = TRUE)) {
+  install.packages("gctaUtils")
+}
+
+# Load required packages
+library(data.table)
+library(qqman)
+library(gctaUtils)
+
+# Read GCTA mlma results
+mlma_results <-new3 
+head(mlma_results)
+names(mlma_results)<-c("SNP", "CHR", "BP", "P")
+mlma_results <-mlma_results[order(mlma_results$P),] 
+# Create a Manhattan plot
+png("GWASmanhattanChol_Covar.png", res = 150, width = 600, height = 600)
+manhattan_plot <- manhattan(mlma_results, annotatePval = 0.00001, chr = "CHR", bp = "BP", p = "P")
+dev.off()
+# Customize the Manhattan plot (optional)
+# For example, you can add significance threshold lines
+manhattan_plot <- manhattan_plot +
+  geom_hline(yintercept = -log10(0.05/m), linetype = "dashed", color = "red") +
+  geom_hline(yintercept = -log10(5e-8), linetype = "dashed", color = "blue")
+
+# Save or display the plot
+# For saving the plot
+# ggsave("manhattan_plot.png", manhattan_plot, width = 10, height = 6, dpi = 300)
+# For displaying the plot
+print(manhattan_plot)

@@ -1,0 +1,201 @@
+---
+title: "Simulating GRM and Pheno"
+author: "BENJAMIN"
+date: "2/9/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("OmicKriging")
+library(tibble)
+library(lme4qtl)
+library(tidyverse)
+library(rio)
+library("genio")
+library(micEcon)
+library("symMatrix")
+install.packages("micEcon")
+setwd("/Users/bm0211/RegEx/Turkana_stuff")
+
+```
+
+## This Chunk is for simulating a dataset that we already know the answer to, 
+## so that we can test our pipeline just to make sure that the pipeline works 
+## and that we get the answer we expext given that we already know what the heritability should be
+
+```{r}
+##Simulate the Full Sibling Design GRM matrix
+simulateKinship <- function(N, L = 5)
+{
+  if(!require(Matrix))
+    stop('Could not load package Matrix')
+  
+  stopifnot(!(N %% L)) # family size = L
+  Nl <- N / L
+  
+  # kinship of a single family
+  K0 <- matrix(0.5, L, L)
+  diag(K0) <- 1
+  K0[1, 2] <- 0
+  K0[2, 1] <- 0
+  
+  K <- kronecker(Diagonal(Nl), K0) 
+  
+  ids <- seq(N)
+  rownames(K) <- ids
+  colnames(K) <- ids
+  
+  return(K)
+}
+##################################################
+N  = 870 ##870 is the total number of Turkana we have sequenced so far
+h2 = 0.5 ##Heritability should be equal to the value set here
+sigma = 1
+G = simulateKinship(N)
+##################################################
+##Step 2 generate Breeding values from the GRM, and use them to Create a Phenotype File
+add = sigma * sqrt(h2) * t(chol(G)) %*% rnorm(N)
+#################################################
+##Step 3 Create a Phenotype file using the generated Breeding values in step 2
+z = add + rnorm(N, sd = sigma * sqrt(1-h2)) # P = G + E
+##################################################
+##Step 4, Write the GRM and Phenotype file into a format where I can attach the Unique.IDs 
+## from my pipeline
+G = as_tibble(as.matrix(G)) # print in correct GRM file format
+Z= as.data.frame(as.matrix(z)) # add to correct phenotype file format 
+# run h2 estimate using Z and G above after getting them in correct format
+```
+## Simulating phenotype with real GRM
+```{r}
+symmetrise <- function(mat)
+{rowscols <- which(lower.tri(mat), arr.ind=TRUE)
+  sparseMatrix(i=rowscols[,1],
+  j=rowscols[,2],
+  x=mat[lower.tri(mat)],
+  symmetric=TRUE, 
+  dims=c(nrow(mat),
+  ncol(mat)))
+}
+
+N  = 870 ##870 is the total number of Turkana we have sequenced so far
+h2 = 0.5 ##Heritability should be equal to the value set here
+sigma = 1
+G_real = read_GRMBin("Recent_CleanHDL.grm") ##The REAL GRM from the cluster
+G_real = as.matrix(G_real)
+G_real = Matrix(G_real)
+##G_real <- symmetrise(G_real) 
+G_real[lower.tri(G_real)] = t(G_real)[lower.tri(G_real)]
+G_real <- miscTools::symMatrix(G_real[upper.tri(G_real, TRUE)], nrow=nrow(G_real), byrow=TRUE)
+G_real <- forceSymmetric(G_real)
+##################################################
+##Step 2 generate Breeding values from the GRM, and use them to Create a Phenotype File
+add_real = sigma * sqrt(h2) * t(chol(G_real)) %*% rnorm(N)
+#################################################
+##Step 3 Create a Phenotype file using the generated Breeding values in step 2
+z_real = add_real + rnorm(N, sd = sigma * sqrt(1-h2)) # P = G + E
+##################################################
+##Step 4, Write the GRM and Phenotype file into a format where I can attach the Unique.IDs 
+## from my pipeline
+G_real = as_tibble(as.matrix(G_real)) # print in correct GRM file format
+Z_real= as.data.frame(as.matrix(z_real)) # add to correct phenotype file format 
+# run h2 estimate using Z and G above after getting them in correct format
+
+```
+## The chunk Below is for Getting the simulated Phenotype and GRM files above into correct format 
+## for GCTA
+## One option is to Write Phenotype file then edit in excel it to make sure it follows the GCTA format of 
+## 6 columns (family_id, individual_id, paternal_id, maternal_id, sex, phenotype) 
+## Here, you can add the Barcode and IDs that match our real data
+## CODE: write.table(Z, file = "Simulated_Phenotype.csv",row.names = FALSE, quote=FALSE)
+## After this, read in the edited Phenotype file in the correct format and write it into 
+## a .Phen file which is what GCTA uses for Heritability estimates
+```{r}
+## Second option to assign the REAL IDs computationally
+## First Load the Gene_IDs
+Gene_IDS <- import("Gene_IDs.csv") ##Gene IDS as copied from the .fam file on the cluster
+Gene_IDS <- Gene_IDS %>% mutate (V1 = recode(V1 , "0"="-9")) %>% mutate (V2 = recode(V2 , "0"="-9"))%>% mutate (V3 = recode(V3 , "0"="-9"))
+head(Gene_IDS)
+sim_data <- merge(data.frame(Gene_IDS, row.names = NULL), data.frame(Z, row.names = NULL), by = 0, all = TRUE)[-1]
+dim(sim_data)
+names(sim_data)[7] <- "simulated_values"
+head(sim_data)
+############################################################################
+##Write table to Use on the Cluster with GCTA
+write.table(sim_data, file = "sim_data.phen",row.names = FALSE, quote=FALSE)
+
+#######################################################################
+##Write the Simulated GRM from this code into the GRM format that GCTA recognizes 
+##usually has three file types (.grm.bin, .grm.N.bin, .grm.id)
+kinship <- matrix(c(as.matrix(G)), nrow = 870)
+M <- matrix(Gene_IDS$BARCODE_ID, byrow = TRUE, nrow = 870, ncol = 870)
+dim(M)
+head(M)
+fam <-tibble(
+  fam = Gene_IDS$FAM_ID,
+  id = Gene_IDS$BARCODE_ID
+)
+name <- "HDL_Simulated"
+write_grm(name, kinship, M = M, fam = fam, shape = c("square"))
+## Use the simulated GRM and Phenotype files with the GCTA package on the cluster
+## ....test if you will get the expected Heritability (in this case ~0.5)
+```
+
+## The Chunk below is to test the simulated Data with an R package used to check heritability
+```{r}
+##Simulation should give heritability ~0.5
+pheno_df = sim_data
+colnames(pheno_df)
+names(pheno_df)[7] <- "pheno_simulated"
+names(pheno_df)[2] <- "id"
+##
+##
+grm = read_GRMBin("HDL_Simulated.grm", size = 4) ##The simulated GRM from the chunk above
+
+## Run the Package to assess heritability
+model = relmatLmer(pheno_simulated ~ (1|id),pheno_df, relmat = list(id = as.matrix(grm)))
+lme4qtl::VarProp(model)
+##You should get a H2 estimate of ~0.5 if the pipeline worked well (last column "Prop")
+##Below is with actual data
+```
+
+## The Chuck Below is for running a heritability estimate using our actual data using the R package
+## This Chunk is for HDL heritability ...Substitute the .phen file incase you want another trait
+```{r}
+setwd("/Users/bm0211/RegEx/Turkana_stuff")
+##Import the REAL Phenotype file from another script, merge with the simulated data
+Phenotype_HDL_raw <- read.table("Pulse_pressure_Unique.phen", header = T) ##HDL .phen file
+Phenotype_HDL_raw <- Phenotype_HDL_raw %>% distinct(indiv_id, .keep_all = TRUE)
+dim(Phenotype_HDL_raw)
+colnames(Phenotype_HDL_raw)
+## Create DF with REAL and Simulated data with IDs matching the REAL GRM 
+## ...containS the simulated phenotype (pheno_df created above)
+Phenotype_HDL <- merge(Phenotype_HDL_raw , pheno_df, by.x = "indiv_id", by.y = "id", all.x = TRUE)
+head(Phenotype_HDL)
+dim(Phenotype_HDL)
+colnames(Phenotype_HDL)
+##The merge creates a .x and .y for the pheno column ...
+## ....Pheno.x is the REAL data while pheno.y is the simulated data
+Phenotype_HDL$pheno <- as.numeric(Phenotype_HDL$pheno)
+Phenotype_HDL <- Phenotype_HDL %>% distinct(indiv_id, .keep_all = TRUE)
+dim(Phenotype_HDL)
+str(Phenotype_HDL)
+##Heritability estimates using R
+GRM_HDL = read_GRMBin("Recent_CleanHDL.grm", size = 4) ##The REAL GRM from the cluster
+GRM_HDL = as.matrix(GRM_HDL)
+#colnames(GRM_HDL)
+tmp_df = subset(Phenotype_HDL, select = c(2,1,3:15))
+dim(tmp_df)
+colnames(tmp_df)
+head(tmp_df)
+## Heritability with Actual Data
+HDL_model = relmatLmer(pheno ~ (1|indiv_id),tmp_df, relmat = list(indiv_id = as.matrix(GRM_HDL)))
+lme4qtl::VarProp(HDL_model)
+
+##Heritability with simulated Data ...sanity check ..I set my data to have ~0.5 heritability
+HDL_model_sim = relmatLmer(pheno_simulated ~ (1|indiv_id),tmp_df, relmat = list(indiv_id = as.matrix(GRM_HDL)))
+lme4qtl::VarProp(HDL_model_sim)
+##write.table(tmp_df, file = "HDL_Unique_sim_data.phen", row.names = FALSE, quote = FALSE)
+```

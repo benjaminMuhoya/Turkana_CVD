@@ -1,0 +1,251 @@
+---
+title: "Turkana_CVD"
+author: "BENJAMIN"
+date: "12/27/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Data and Structure accordingly
+
+```{r cars}
+## Set Up Working Directory
+getwd()
+library(ggplot2)
+library(dplyr)
+## First run the CVD Risk Calculation Python Script
+## Use the Clean Data file in the correct format
+## Import the output file from the python script
+Cleaned_metadata_file <- import("cvd_risk_results_male_female.csv") ##Name of file from CVD_Risk Calculation Output
+# Transform the CVD risk column
+table(Cleaned_metadata_file$cvd_risk)
+Cleaned_metadata_file <- Cleaned_metadata_file %>%
+  mutate(CVD_risk_category = case_when(
+    cvd_risk < 10 ~ "Low",
+    cvd_risk >= 10 & cvd_risk <= 20 ~ "Borderline",
+    cvd_risk > 20 ~ "High"
+  ))
+# Calculate the frequencies and percentages
+frequencies <- Cleaned_metadata_file %>%
+  group_by(lifestyle, CVD_risk_category) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  group_by(lifestyle) %>%
+  mutate(Percentage = (Count / sum(Count)) * 100)
+# Define colors
+BenG_Pallete <- c("Low" = "#e58601", "Borderline" = "#6998ab", "High" = "#8dab7f")
+```
+
+## Plot
+```{r cars}
+# Create a bar plot with custom colors and add percentage labels
+ggplot(frequencies, aes(x = lifestyle, y = Count, fill = CVD_risk_category)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, size = 3) +
+  scale_fill_manual(values = BenG_Pallete) +
+  ggtitle("Frequency of CVD Risk Categories Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Frequency") +
+  theme_minimal()
+```
+
+## Plot
+```{r cars}
+ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Chol)) +
+  geom_boxplot() +
+  ggtitle("Comparison of Pressure Across Lifestyle") +
+  xlab("Lifestyle") +
+  ylab("Pressure")
+```
+
+## Plot
+```{r cars}
+# Define colors
+BenG_Pallete <- c("Pastoralist" = "#e58601",    # Faded red-brown
+                         "Peri-Urban" = "#6998ab",      # Blue-ish
+                         "Market_Integrated" = "#8dab7f") # Greenish
+
+# Create a boxplot with custom colors and mean points
+ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Diet_MI_items, fill = lifestyle)) +
+  geom_boxplot(color = "black", alpha = 0.7) + # Set boxplot borders to black, adjust transparency with alpha
+  scale_fill_manual(values = BenG_Pallete) + # Use custom colors
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "red") + # Add mean points
+  ggtitle("Boxplot of Diet_MI_items Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Diet_MI_items") +
+  theme_minimal() # Optional: Adds a minimalistic theme to the plot
+```
+
+## Plot
+```{r cars}
+# Calculate the frequencies
+frequencies <- Cleaned_metadata_file %>%
+  group_by(lifestyle, Fetch_water) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  mutate(Fetch_water = as.factor(Fetch_water)) %>%
+  filter(complete.cases(Fetch_water))
+# Calculate the total count for each lifestyle to find percentages
+total_counts <- frequencies %>%
+  group_by(lifestyle) %>%
+  summarise(Total = sum(Count)) 
+# Merge total_counts back into frequencies
+frequencies <- merge(frequencies, total_counts, by = "lifestyle")
+# Calculate the percentage
+frequencies$Percentage <- (frequencies$Count / frequencies$Total) * 100
+frequencies <- frequencies %>%
+  mutate(Fetch_water = case_when(
+    Fetch_water == 1 ~ "Low",
+    Fetch_water == 2 ~ "Medium",
+    Fetch_water == 3 ~ "High",
+    TRUE ~ as.character(Fetch_water) # Keeps other values as is
+  ))
+# Define Wes colors
+table(frequencies$Fetch_water)
+BenG_Pallete <- c("Low" = "#e58601",    # Faded red-brown # Low
+                         "Medium" = "#6998ab", # Blue-ish # Medium
+                         "High" = "#8dab7f")   # Greenish # High
+# Create a bar plot with custom colors and add percentage labels
+ggplot(frequencies, aes(x = lifestyle, y = Count, fill = Fetch_water)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, # Adjust this value as needed to position the labels
+            size = 3) +
+  scale_fill_manual(values = BenG_Pallete) + # Use custom colors
+  ggtitle("Frequency of Fetch Water Categories Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Frequency") +
+  theme_minimal() # Optional: Adds a minimalistic theme to the plot
+```
+
+## Summary Stats before Scaling
+```{r cars}
+##Summary Stats
+mydata_Gender_h_sol <- Cleaned_metadata_file %>% 
+  ##filter(lifestyle == "Pastoralist") %>% ## Subset to Pastoralist Only
+  summarise(
+    HDL_mean = mean(na.omit(HDL)),
+    HDL_sd = sd(na.omit(HDL)),
+    LDL_mean = mean(na.omit(LDL)),
+    LDL_sd = sd(na.omit(LDL)),
+    Chol_mean = mean(na.omit(Chol)),
+    Chol_sd = sd(na.omit(Chol)),
+    PP_mean = mean(na.omit(Pulse_pressure)),
+    PP_sd = sd(na.omit(Pulse_pressure)),
+    Trig_mean = mean(na.omit(Trig)),
+    Trig_sd = sd(na.omit(Trig)),
+    Sys_mean = mean(na.omit(BPsystolic)),
+    Sys_sd = sd(na.omit(BPsystolic)),
+    dia_mean = mean(na.omit(BPdiastolic)),
+    dia_sd = sd(na.omit(BPdiastolic)),
+  )
+view(mydata_Gender_h_sol) 
+```
+## Prep for Stats
+
+```{r cars}
+names(Cleaned_metadata_file)[99] <- "Body_Fat"
+# Scaling multiple columns in one step
+Cleaned_metadata_file <- Cleaned_metadata_file %>%
+  mutate_at(vars(BPsystolic,BPdiastolic,Diet_MI_items,HDL, LDL, Trig, Chol, Body_Fat, cvd_risk, BMI, Age, h_sol, Fetch_water, Pulse_pressure), 
+            ~ scale(.) %>% as.vector)
+
+hist(Cleaned_metadata_file$Pulse_pressure)
+hist(Cleaned_metadata_file$Body_Fat)
+```
+## Stats
+
+```{r pressure, echo=FALSE}
+## Create New Data-frame and structure it
+Cleaned_metadata_file_subset <- Cleaned_metadata_file[complete.cases(Cleaned_metadata_file$Fetch_water) & Cleaned_metadata_file$Fetch_water != "", ]
+dim(Cleaned_metadata_file_subset)
+table(Cleaned_metadata_file_subset$Fetch_water)
+
+##Data Subsets for use in the different models
+female_data <- subset(Cleaned_metadata_file_subset, Gender == "Female")
+male_data <- subset(Cleaned_metadata_file_subset, Gender == "Male")
+Pastoralist_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Pastoralist")
+rural_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Peri-Urban")
+Market_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Market_Integrated")
+```
+## Linear Regression
+```{r}
+# Create a vector of response variable names
+response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat","Pulse_pressure", "Trig", "cvd_risk")
+# Create an empty data frame to store the results
+results_df <- data.frame(ResponseVariable = character(0), 
+                         Coefficient = numeric(0), 
+                         StdError = numeric(0), 
+                         tValue = numeric(0), 
+                         PValue = numeric(0),
+                         Predictor = character(0))
+# Loop through each response variable
+for (response_var in response_vars) {
+  # Define the formula for the linear model
+  formula <- as.formula(paste(response_var,"~  h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Gender * Age)"))
+  
+  ## Below is a model with all the terms ..Replace in the model the components needed
+  ##"~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Age * h_sol) + (Gender * h_sol) + (Gender * Age)"
+  
+  # Fit the linear regression model ##This has Entire Dataset
+  model <- lm(formula, data = Cleaned_metadata_file_subset) ## Replace with Subset Data Here
+  # Get the summary of the model
+  model_summary <- summary(model)
+  # Extract the coefficients
+  coefficients <- coef(model_summary)
+  # Extract the standard errors
+  std_errors <- coef(summary(model))[, "Std. Error"]
+  # Extract t-values
+  t_values <- coef(summary(model))[, "t value"]
+  # Extract p-values
+  p_values <- coef(summary(model))[, "Pr(>|t|)"]
+  # Get all predictor names (excluding the intercept)
+  predictor_names <- names(coefficients)[-1]
+  # Create a data frame for the results
+  results <- data.frame(ResponseVariable = response_var,
+                        Coefficient = coefficients,
+                        StdError = std_errors,
+                        tValue = t_values,
+                        PValue = p_values,
+                        Predictor = rownames(model_summary$coefficients))
+
+  # Append the results to the results data frame
+  results_df <- rbind(results_df, results)
+}
+head(results_df)
+# Save the results to a CSV file
+write.csv(results_df, "linear_regression_results.csv", row.names = FALSE)
+```
+## Plot the regression results
+
+```{r}
+# Sample data (replace with your own data)
+# Here, 'effect_size' is the effect size column, and 'p_value' is the p-value column
+Heat_map <- import("linear_regression_results.csv")
+Heat_map <- Heat_map[Heat_map$Predictor != "(Intercept)", ]
+table(Heat_map$Predictor)
+##########
+custom_palette <- c("blue", "white","yellow", "red")
+#########
+Effect_plot <- ggplot(Heat_map, aes(x = ResponseVariable, y = Predictor, fill = tValue)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = custom_palette,
+                       limits = c(-7, 9),
+                       breaks = seq(-3, 10, by = 3),
+                       na.value = "red") +
+  geom_text(aes(label = ifelse(PValue < 0.05, "p<0.05", "")), vjust = 1.5, size = 3) +
+  labs(x = "Response Variable", y = "Predictor", fill = "Effect Size") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  ggtitle("Heatmap of Effect Sizes by Predictor")
+# Specify the file name and dimensions
+png("Effect_plot.png", width = 1000, height = 800, units = "px", res = 150)
+# Print the ggplot2 plot to the PNG file
+print(Effect_plot)
+# Close the PNG device
+dev.off()
+```
