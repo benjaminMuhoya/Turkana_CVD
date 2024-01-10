@@ -7,15 +7,17 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
-
 ## Load Data and Structure accordingly
-
 ```{r cars}
 ## Set Up Working Directory
 getwd()
 library(ggplot2)
 library(dplyr)
+library(rio)
+library(MASS)
+library(caret)
 ## First run the CVD Risk Calculation Python Script
 ## Use the Clean Data file in the correct format
 ## Import the output file from the python script
@@ -36,6 +38,7 @@ frequencies <- Cleaned_metadata_file %>%
   mutate(Percentage = (Count / sum(Count)) * 100)
 # Define colors
 BenG_Pallete <- c("Low" = "#e58601", "Borderline" = "#6998ab", "High" = "#8dab7f")
+
 ```
 
 ## Plot
@@ -154,21 +157,42 @@ Cleaned_metadata_file <- Cleaned_metadata_file %>%
   mutate_at(vars(BPsystolic,BPdiastolic,Diet_MI_items,HDL, LDL, Trig, Chol, Body_Fat, cvd_risk, BMI, Age, h_sol, Fetch_water, Pulse_pressure), 
             ~ scale(.) %>% as.vector)
 
-hist(Cleaned_metadata_file$Pulse_pressure)
-hist(Cleaned_metadata_file$Body_Fat)
+# Define the columns to transform
+columns_to_assess <- c("HDL", "LDL", "Chol", "Trig", "Pulse_pressure", "BMI",  "cvd_risk", "Diet_MI_items", "h_sol", "Body_Fat", "Age","BPdiastolic","BPsystolic", "Fetch_water")
+# Function to apply Yeo-Johnson transformation
+transform_yeojohnson <- function(data, columns) {
+  # Create a preProcess object for Yeo-Johnson transformation on specified columns
+  preproc <- preProcess(data[, columns], method = "YeoJohnson")
+  # Apply the transformation to the data
+  transformed_data <- predict(preproc, data[, columns])
+  # Replace the original data with the transformed data for the specified columns
+  data[, columns] <- transformed_data
+  # Return the entire data frame
+  return(data)
+}
+
+# Apply the transformation
+transformed_data <- transform_yeojohnson(Cleaned_metadata_file, columns_to_assess)
+
+##
+hist(transformed_data$Pulse_pressure)
+hist(transformed_data$Body_Fat)
 ```
 ## Stats
 
 ```{r pressure, echo=FALSE}
 ## Create New Data-frame and structure it
-Cleaned_metadata_file_subset <- Cleaned_metadata_file[complete.cases(Cleaned_metadata_file$Fetch_water) & Cleaned_metadata_file$Fetch_water != "", ]
+Cleaned_metadata_file_subset <- transformed_data[complete.cases(transformed_data$Fetch_water) & transformed_data$Fetch_water != "", ]
 dim(Cleaned_metadata_file_subset)
 table(Cleaned_metadata_file_subset$Fetch_water)
+table(Cleaned_metadata_file_subset$Gender[Cleaned_metadata_file_subset$lifestyle == "Peri-Urban"])
 
 ##Data Subsets for use in the different models
 female_data <- subset(Cleaned_metadata_file_subset, Gender == "Female")
 male_data <- subset(Cleaned_metadata_file_subset, Gender == "Male")
 Pastoralist_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Pastoralist")
+Pas_female <- subset(Pastoralist_data, Gender == "Female")
+Pas_male <- subset(Pastoralist_data, Gender == "Male")
 rural_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Peri-Urban")
 Market_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Market_Integrated")
 ```
@@ -186,13 +210,13 @@ results_df <- data.frame(ResponseVariable = character(0),
 # Loop through each response variable
 for (response_var in response_vars) {
   # Define the formula for the linear model
-  formula <- as.formula(paste(response_var,"~  h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Gender * Age)"))
+  formula <- as.formula(paste(response_var,"~  Age + Gender + Diet_MI_items + Fetch_water + (Gender * Age)"))
   
   ## Below is a model with all the terms ..Replace in the model the components needed
-  ##"~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Age * h_sol) + (Gender * h_sol) + (Gender * Age)"
+  ##"~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Age * h_sol) + (Gender * Age)"
   
   # Fit the linear regression model ##This has Entire Dataset
-  model <- lm(formula, data = Cleaned_metadata_file_subset) ## Replace with Subset Data Here
+  model <- lm(formula, data = rural_data) ## Replace with Subset Data Here
   # Get the summary of the model
   model_summary <- summary(model)
   # Extract the coefficients
@@ -234,7 +258,7 @@ custom_palette <- c("blue", "white","yellow", "red")
 Effect_plot <- ggplot(Heat_map, aes(x = ResponseVariable, y = Predictor, fill = tValue)) +
   geom_tile() +
   scale_fill_gradientn(colors = custom_palette,
-                       limits = c(-7, 9),
+                       limits = c(-8, 9),
                        breaks = seq(-3, 10, by = 3),
                        na.value = "red") +
   geom_text(aes(label = ifelse(PValue < 0.05, "p<0.05", "")), vjust = 1.5, size = 3) +
