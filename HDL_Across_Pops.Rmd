@@ -1,0 +1,1267 @@
+---
+title: "HDL DATA ACCROSS POPS"
+author: "BENJAMIN"
+date: "10/2/2022"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+##load required libraries
+```{r}
+##I have the documents here
+setwd("/Users/bm0211/RegEx/Turkana_CVD")
+lifestyle_cont = import("Standardized_Lifestyle_CONT.csv") ##Output of Lifestyle categorization script
+##Packages needed
+library(coefplot)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(RColorBrewer)
+library(car)
+library(rstatix)
+library(rio)
+library(ggrepel)
+library(ggmap)
+library(htmltools)
+library(htmlwidgets)
+library(leaflet)
+library(stats)
+SetmissingValues = function(x) {
+  x[x == "N/A"] <- NA
+  x[x == " "] <- NA
+  x[x == "-"] <- NA
+  x[x == "_"] <- NA
+   x[x == ""] <- NA
+    x[x == "   "] <- NA
+    x[x == " -"] <- NA
+    x[x == "other/not answered"] <- NA
+    x[x == "N/AN/A"] <- NA
+    x[x == " , "] <- NA
+  x
+}
+ggtheme <- 
+  theme(
+    axis.text.x = element_text(colour="black"),
+    axis.text.y = element_text(colour="black"),
+    panel.background = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_rect(colour="black", fill = NA)
+  )
+##Generating colors
+n <- 30
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == "qual",]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+##pie(rep(1,n), col=sample(col_vector, n))
+##sample(col_vector, n)
+
+colnames(lifestyle_cont)
+names(lifestyle_cont)[50] ="Chol"
+names(lifestyle_cont)[51] ="HDL"
+names(lifestyle_cont)[52] ="Trig"
+names(lifestyle_cont)[53] ="LDL"
+names(lifestyle_cont)[109] ="BPsystolic"
+names(lifestyle_cont)[110] ="BPdiastolic"
+names(lifestyle_cont)[31] = "Cigarette"
+names(lifestyle_cont)[32] = "Tobacco"
+names(lifestyle_cont)[33] = "Alcohol"
+
+table(lifestyle_cont$Fasting)
+lifestyle_cont <- select(lifestyle_cont, -c(98,102:105,107,108))
+```
+## Load the Data
+## Prep data for boxplot and ANOVA HDL (Gender, lifetyle and age differences)
+```{r setup, include=FALSE}
+dim(lifestyle_cont)
+## I am interested in Blood Lipids hence dropped all the rows with NA in these columns
+HDLacrosspops <- SetmissingValues(lifestyle_cont)
+HDLacrosspops$HDL <- as.numeric(HDLacrosspops$HDL)
+HDLacrosspops$Chol <- as.numeric(HDLacrosspops$Chol)
+HDLacrosspops$Trig <- as.numeric(HDLacrosspops$Trig)
+HDLacrosspops$BPsystolic <- as.numeric(HDLacrosspops$BPsystolic)
+HDLacrosspops$BPdiastolic <- as.numeric(HDLacrosspops$BPdiastolic)
+HDLacrosspops$h_sol <- as.numeric(HDLacrosspops$h_sol)
+HDLacrosspops$BMI <- as.numeric(HDLacrosspops$BMI)
+HDLacrosspops$Body_fat_percentage <- as.numeric(HDLacrosspops$Body_fat_percentage)
+HDLacrosspops$Age <- as.numeric(HDLacrosspops$Age)
+str(HDLacrosspops)
+table(HDLacrosspops$Gender)
+colnames(HDLacrosspops)
+##
+##
+##
+no_Outlier_BMI = HDLacrosspops[complete.cases(HDLacrosspops$BMI),]
+Q1_BMI <- quantile(no_Outlier_BMI$BMI, .25)
+Q3_BMI <- quantile(no_Outlier_BMI$BMI, .75)
+IQR_BMI<- IQR(no_Outlier_BMI$BMI)
+no_Outlier_BMI<- subset(no_Outlier_BMI, no_Outlier_BMI$BMI > (Q1_BMI - 1.5*IQR_BMI) & no_Outlier_BMI$BMI<(Q3_BMI + 1.5*IQR_BMI))
+#######
+no_Outlier_BF = HDLacrosspops[complete.cases(HDLacrosspops$Body_fat_percentage),]
+Q1_BF <- quantile(no_Outlier_BF$Body_fat_percentage, .25)
+Q3_BF <- quantile(no_Outlier_BF$Body_fat_percentage, .75)
+IQR_BF <- IQR(no_Outlier_BF$Body_fat_percentage)
+no_Outlier_BF<- subset(no_Outlier_BF, no_Outlier_BF$Body_fat_percentage > (Q1_BF - 1.5*IQR_BF) & no_Outlier_BF$Body_fat_percentage<(Q3_BF + 1.5*IQR_BF))
+colnames(no_Outlier_BMI)
+#####
+Summary_stats_HDL <- select(HDLacrosspops, -c("Body_fat_percentage", "BMI"))
+BMI_BF_data <- merge(no_Outlier_BF[, c("Unique.ID", "Body_fat_percentage")], no_Outlier_BMI[, c("Unique.ID", "BMI")], by = "Unique.ID", all=TRUE)
+head(BMI_BF_data)
+dim(BMI_BF_data)
+hist(BMI_BF_data$Body_fat_percentage)
+Summary_stats_HDL <- merge(Summary_stats_HDL, BMI_BF_data, by = "Unique.ID", all = TRUE)
+dim(Summary_stats_HDL)
+```
+## Plotting the lipoproteins
+## First Adjust the dataframe as required
+```{r setup, include=FALSE}
+##Define a new data frame ....just duplicted the previous one
+columns_to_check <- "HDL"
+Summary_stats_HDL <- Summary_stats_HDL[complete.cases(Summary_stats_HDL[, c(columns_to_check)]), ]
+colnames(Summary_stats_HDL)
+str(Summary_stats_HDL)
+dim(Summary_stats_HDL)
+table(Summary_stats_HDL$Sampling_location[Summary_stats_HDL$h_sol == 3])
+```
+## These chunk to remove outliers 
+```{r setup, include=FALSE}
+colnames(Summary_stats_HDL)
+### HDL ######################################################################
+no_Outlier_HDL <- Summary_stats_HDL[complete.cases(Summary_stats_HDL$HDL), ] 
+table(no_Outlier_HDL$Sampling_location[no_Outlier_HDL$h_sol == 4])
+Q1 <- quantile(no_Outlier_HDL$HDL, .25)
+Q3 <- quantile(no_Outlier_HDL$HDL, .75)
+IQR <- IQR(no_Outlier_HDL$HDL)
+no_Outlier_HDL <- subset(no_Outlier_HDL, no_Outlier_HDL$HDL > (Q1 - 1.5*IQR) & no_Outlier_HDL$HDL<(Q3 + 1.5*IQR))
+### LDL #######################################################################
+no_Outlier_LDL <- Summary_stats_HDL[complete.cases(Summary_stats_HDL$LDL),]
+Q1_LDL <- quantile(no_Outlier_LDL$LDL, .25)
+Q3_LDL <- quantile(no_Outlier_LDL$LDL, .75)
+IQR_LDL <- IQR(no_Outlier_LDL$LDL)
+no_Outlier_LDL <- subset(no_Outlier_LDL, no_Outlier_LDL$LDL > (Q1_LDL - 1.5*IQR_LDL) & no_Outlier_LDL$LDL<(Q3_LDL + 1.5*IQR_LDL))
+### Cholesterol #############################################################
+no_Outlier_Chol11 = Summary_stats_HDL[complete.cases(Summary_stats_HDL$Chol),]
+Q1_Chol <- quantile(no_Outlier_Chol11$Chol, .25)
+Q3_Chol <- quantile(no_Outlier_Chol11$Chol, .75)
+IQR_Chol<- IQR(no_Outlier_Chol11$Chol)
+no_Outlier_Chol <- subset(no_Outlier_Chol11, no_Outlier_Chol11$Chol > (Q1_Chol - 1.5*IQR_Chol) & no_Outlier_Chol11$Chol<(Q3_Chol + 1.5*IQR_Chol))
+### Trigs ####################################################################
+no_Outlier_Trig11 = Summary_stats_HDL[complete.cases(Summary_stats_HDL$Trig),]
+Q1_Trig <- quantile(no_Outlier_Trig11$Trig, .25)
+Q3_Trig <- quantile(no_Outlier_Trig11$Trig, .75)
+IQR_Trig<- IQR(no_Outlier_Trig11$Trig)
+no_Outlier_Trig <- subset(no_Outlier_Trig11, no_Outlier_Trig11$Trig > (Q1_Trig - 1.5*IQR_Trig) & no_Outlier_Trig11$Trig<(Q3_Trig + 1.5*IQR_Trig))
+##Create Df with values that have no outliers #################################
+colnames(no_Outlier_HDL)
+TrigDf <- select(no_Outlier_Trig, c("Unique.ID","Trig"))
+CholesDF <- select(no_Outlier_Chol, c("Unique.ID","Chol"))
+HDL_DF <- select(no_Outlier_HDL, c("Unique.ID","HDL"))
+LDL_DF <- select(no_Outlier_LDL, c("Unique.ID","LDL"))
+head(TrigDf)
+DF1 <- merge(TrigDf, CholesDF, by = "Unique.ID", all = TRUE)
+DF_2_Lipo <- merge(DF1, HDL_DF, by = "Unique.ID", all = TRUE)
+DF_3_Lipo <- merge(DF_2_Lipo, LDL_DF, by = "Unique.ID", all = TRUE)
+head(DF_3_Lipo)
+dim(DF_3_Lipo)
+##Merge with main_data
+colnames(Summary_stats_HDL)
+Summary_stats_HDL_subset = select(Summary_stats_HDL, -c("Trig", "HDL", "Chol","LDL"))
+Cleaned_Lipodata = merge(Summary_stats_HDL_subset, DF_3_Lipo, by = "Unique.ID", all = TRUE)
+colnames(Cleaned_Lipodata)
+dim(Cleaned_Lipodata)
+### Blood Pressure ##########################################################
+### You need to Create the "Cleaned_Lipodata" file in the chunk below before cleaning Blood Pressure
+Cleaned_Lipodata$Pulse_pressure <- Cleaned_Lipodata$BPsystolic - Cleaned_Lipodata$BPdiastolic
+##
+## Pulse pressure #####
+no_outlier_PP <- Cleaned_Lipodata[complete.cases(Cleaned_Lipodata$Pulse_pressure), ]
+Q1_PP <- quantile(no_outlier_PP$Pulse_pressure, .25)
+Q3_PP <- quantile(no_outlier_PP$Pulse_pressure, .75)
+IQR_PP <- IQR(no_outlier_PP$Pulse_pressure)
+no_outlier_PP <- subset(no_outlier_PP, no_outlier_PP$Pulse_pressure > (Q1_PP - 1.5*IQR_PP) & no_outlier_PP$Pulse_pressure < (Q3_PP + 1.5*IQR_PP))
+## Systolic ########
+Q1_BPsys <- quantile(no_outlier_PP$BPsystolic, .25)
+Q3_BPsys <- quantile(no_outlier_PP$BPsystolic, .75)
+IQR_BPsys <- IQR(no_outlier_PP$BPsystolic)
+no_outlier_BPsys <- subset(no_outlier_PP, no_outlier_PP$BPsystolic > (Q1_BPsys - 1.5*IQR_BPsys) & no_outlier_PP$BPsystolic < (Q3_BPsys + 1.5*IQR_BPsys))
+## Diastolic ########
+Q1_BPdia <- quantile(no_outlier_PP$BPdiastolic, .25)
+Q3_BPdia <- quantile(no_outlier_PP$BPdiastolic, .75)
+IQR_BPdia <- IQR(no_outlier_PP$BPdiastolic)
+no_outlier_BPdia <- subset(no_outlier_PP, no_outlier_PP$BPdiastolic > (Q1_BPdia - 1.5*IQR_BPdia) & no_outlier_PP$BPdiastolic < (Q3_BPdia + 1.5*IQR_BPdia))
+
+## Merge into One data.frame without outliers #################################
+colnames(no_outlier_BPdia)
+BP1 <- select(no_outlier_BPdia, c("Unique.ID","BPdiastolic"))
+BP2 <- select(no_outlier_BPsys, c("Unique.ID","BPsystolic"))
+BP3 <- select(no_outlier_PP, c("Unique.ID","Pulse_pressure"))
+BP_clean0 <- merge(BP1, BP2 , by="Unique.ID", all= TRUE)
+BP_clean <- merge(BP_clean0, BP3, by="Unique.ID", all= TRUE)
+dim(BP_clean)
+colnames(Cleaned_Lipodata)
+Cleaned_Lipodata <- select(Cleaned_Lipodata, -c("BPdiastolic","BPsystolic","Pulse_pressure"))
+colnames(Cleaned_Lipodata)
+Cleaned_metadata_file <- merge(Cleaned_Lipodata, BP_clean, by = "Unique.ID", all=TRUE)
+colnames(Cleaned_metadata_file)
+dim(Cleaned_metadata_file)
+
+################################################
+## Clean columns needed for CVD risk calculation
+## Clean the Cigarete and Diabetes responses into 1 or 0 to help in calculations of CVD risk
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Cigarette = ifelse(Cigarette %in% c("no", "No"), "0",
+                                    ifelse(Cigarette %in% c("Yes", "yes"), "1",
+                                           ifelse(Cigarette == "NA", "0",
+                                                  ifelse(Cigarette == "other/not answered", "0", Cigarette)))))
+table(Cleaned_metadata_file$Cigarette)
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Diabetes = ifelse(Diabetes %in% c("no", "No","0NA","NA0"), "0",
+                                    ifelse(Diabetes %in% c("Yes","NA1", "yes"), "1",
+                                           ifelse(Diabetes == "NA", "0",
+                                                  ifelse(Diabetes == "other/not answered", "0", Diabetes)))))
+table(Cleaned_metadata_file$Diabetes)
+######################################
+#######Additional cleaning of Files to make a clean file
+#### Add a Lifestyle Category
+Cleaned_metadata_file$lifestyle <- NA
+## Label as Rural based on conditions
+Cleaned_metadata_file[which(Cleaned_metadata_file$h_sol <2),]$lifestyle <- "Rural"
+Cleaned_metadata_file$lifestyle <- ifelse(Cleaned_metadata_file$h_sol >= 2 & 
+                                             (Cleaned_metadata_file$Occupation %in% c("Charcoal Burner", "Fisherman", "Farmer")),
+                                             "Rural",
+                                             Cleaned_metadata_file$lifestyle)
+# Label as "Market_Integrated" based on conditions
+Cleaned_metadata_file$lifestyle <- ifelse(Cleaned_metadata_file$h_sol >= 2 & 
+                                             !(Cleaned_metadata_file$Occupation %in% c("Charcoal Burner", "Fisherman", "Farmer")),
+                                             "Market_Integrated",
+                                             Cleaned_metadata_file$lifestyle)
+##Label as "Pastoralists"
+Cleaned_metadata_file[which(Cleaned_metadata_file$h_sol <3 & 
+                Cleaned_metadata_file$Occupation == "Animal Keeping"),]$lifestyle <- "Pastoralist"
+
+table(Cleaned_metadata_file$lifestyle)
+## Remove NA in lifestyle
+Cleaned_metadata_file <-  Cleaned_metadata_file[complete.cases(Cleaned_metadata_file$lifestyle), ]
+## Standardize Diet and activity level
+table(Cleaned_metadata_file$Soda)
+table(Cleaned_metadata_file$Rice)
+table(Cleaned_metadata_file$Bread_Frequency)
+table(Cleaned_metadata_file$Fetch_water)
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Soda = ifelse(Soda %in% c("ABOVE_2X_weekly", "DAILY", "TWICE_weekly", "Yes"), "2",
+                                    ifelse(Soda %in% c("No", "NEVER"), "0",
+                                           ifelse(Soda == "NA", "0",
+                                                  ifelse(Soda == "RARE", "1", Soda)))))
+
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Rice = ifelse(Rice %in% c("ABOVE_2X_weekly","Daily", "DAILY", "TWICE_weekly", "About_Twice_Weekly", "Yes"), "2",
+                                    ifelse(Rice %in% c("No", "NEVER","NA"), "0",
+                                           ifelse(Rice == "RARE", "1",
+                                                  ifelse(Rice == "", "0", Rice)))))
+
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Bread_Frequency = ifelse(Bread_Frequency %in% c("Daily","About_Twice_Weekly","ABOVE_2X_weekly", "DAILY", "TWICE_weekly", "Yes", "3"), "2",
+                                    ifelse(Bread_Frequency %in% c("NA","No", "NEVER"), "0",
+                                           ifelse(Bread_Frequency == "RARE", "1",
+                                                  ifelse(Bread_Frequency == "", "0", Bread_Frequency)))))
+
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Fetch_water = ifelse(Fetch_water %in% c("Most_of_the_day"), "3",
+                                    ifelse(Fetch_water %in% c("Few_hours"), "2",
+                                           ifelse(Fetch_water == "Hours_1_and_below", "1",
+                                                  ifelse(Fetch_water == "No", "1", Fetch_water)))))
+
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Chips = ifelse(Chips %in% c("Daily","About_Twice_Weekly"), "2",
+                                    ifelse(Chips %in% c("NEVER", "NO", "NA"), "0",
+                                           ifelse(Chips == "RARE", "1",
+                                                  ifelse(Chips == "No", "0", Chips)))))
+
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Sweets = ifelse(Sweets %in% c("YES","Daily","About_Twice_Weekly"), "2",
+                                    ifelse(Sweets %in% c("NEVER", "NO", "NA"), "0",
+                                           ifelse(Sweets == "RARE", "1",
+                                                  ifelse(Sweets == "No", "0", Sweets)))))
+
+
+Cleaned_metadata_file <- transform(Cleaned_metadata_file, Chapati = ifelse(Chapati %in% c("YES","Daily","About_Twice_Weekly"), "2",
+                                    ifelse(Chapati %in% c("NEVER", "NO", "NA"), "0",
+                                           ifelse(Chapati == "RARE", "1",
+                                                  ifelse(Chapati == "No", "0", Chapati)))))
+
+table(Cleaned_metadata_file$Fetch_water)
+table(Cleaned_metadata_file$Sweets)
+table(Cleaned_metadata_file$Chapati)
+table(Cleaned_metadata_file$Soda)
+table(Cleaned_metadata_file$Bread_Frequency)
+table(Cleaned_metadata_file$Rice)
+table(Cleaned_metadata_file$Chips)
+colnames(Cleaned_metadata_file)
+
+##Refined Diet
+Cleaned_metadata_file$Rice <- as.numeric(Cleaned_metadata_file$Rice)
+Cleaned_metadata_file$Bread_Frequency <- as.numeric(Cleaned_metadata_file$Bread_Frequency)
+Cleaned_metadata_file$Soda <- as.numeric(Cleaned_metadata_file$Soda)
+Cleaned_metadata_file$Chips <- as.numeric(Cleaned_metadata_file$Chips)
+Cleaned_metadata_file$Chapati <- as.numeric(Cleaned_metadata_file$Chapati)
+Cleaned_metadata_file$Sweets <- as.numeric(Cleaned_metadata_file$Sweets)
+
+Cleaned_metadata_file$Diet_MI_items <- rowSums(Cleaned_metadata_file[, c("Rice","Bread_Frequency","Soda","Chips","Chapati","Sweets")])
+
+table(Cleaned_metadata_file$Diet_MI_items)
+
+Cleaned_metadata_file <- transform(
+          Cleaned_metadata_file, Alcohol = ifelse(Alcohol %in% c("Daily"), "2",
+          ifelse(Alcohol %in% c("never", "No", "Never"), "0",
+          ifelse(Alcohol == "Occasionally", "1",
+          ifelse(Alcohol == "NA", "0", Alcohol)))))
+table(Cleaned_metadata_file$Alcohol)
+#######################
+Cleaned_metadata_file <- Cleaned_metadata_file[complete.cases(Cleaned_metadata_file$Gender) & Cleaned_metadata_file$Gender != "", ]
+Cleaned_metadata_file <- Cleaned_metadata_file[complete.cases(Cleaned_metadata_file$Age) & Cleaned_metadata_file$Age != "", ]
+######################
+write.csv(Cleaned_metadata_file, file = "Cleaned_metadata_file.csv", row.names = FALSE)
+######################################
+dim(Cleaned_metadata_file)
+table(Cleaned_metadata_file$Gender) ## Should be "Male" and "Female" for it to work with the python code
+table(Cleaned_metadata_file$Cigarette) ## Should be "0" and "1"
+table(Cleaned_metadata_file$Diabetes) ## "0" and "1"
+```
+# Function to calculate Framingham Risk Score in Python
+```{r setup, include=FALSE}
+## ...use the script CVD_Simple.py to calculate using the file
+## ... Cleaned_metadata_file created previous section
+Cleaned_metadata_file <- import("cvd_risk_results_male_female.csv") ##Updated file
+colnames(Cleaned_metadata_file)
+dim(Cleaned_metadata_file)
+table(Cleaned_metadata_file$cvd_risk)
+# Create a boxplot
+ggplot(Cleaned_metadata_file, aes(x = Gender, y = cvd_risk)) +
+  geom_boxplot() +
+  labs(x = "Gender", y = "cvd_risk") +
+  ggtitle("Boxplot of cvd_risk by Gender") +
+  theme_minimal()
+
+##
+# Filter the dataset to select outliers of interest
+filtered_data <- Cleaned_metadata_file[Cleaned_metadata_file$Gender == "Female" & Cleaned_metadata_file$cvd_risk > 5,]
+# Create a table of counts per location
+location_counts <- table(filtered_data$Unique.ID)
+# Print the table to the terminal
+print(location_counts)
+
+```
+## Drawing a MAP
+```{r setup, include=FALSE}
+##Draw Map
+# Create a leaflet map
+my_map <- leaflet(Cleaned_metadata_file) %>%
+  addTiles()  # Add default OpenStreetMap tiles
+
+# Add markers for each latitude and longitude point
+my_map <- my_map %>%
+  addMarkers(
+    lng = ~X_longitude,
+    lat = ~Y_latitude,
+    popup = ~paste("Location: ", Sampling_location)  # Customize the popup content as needed
+  )
+# Display the map
+my_map
+saveWidget(my_map, "my_map.html", selfcontained = FALSE)
+```
+## The chunk below is plotting only
+```{r setup, include=FALSE}
+### HDL ######################################################################
+BoxPlot_HDL <-ggplot(no_Outlier_HDL, aes(x = h_sol , y=HDL, fill = as.factor(h_sol))) + 
+  geom_violin() + 
+  geom_boxplot() + 
+  xlab("h_sol Category") + ylab("HDL (scaled)") + 
+  scale_fill_manual(name = "h_sol", values = c("lightpink", "gray","lightpink", "gray","lightpink", "gray","lightpink", "gray")) + 
+  theme(text = element_text(size = 10),element_line(linewidth = 1)) + 
+  ggtheme
+dim(no_Outlier_HDL)
+### LDL #######################################################################
+BoxPlot_LDL <-ggplot(no_Outlier_LDL, aes(x = h_sol, y=LDL, fill = as.factor(h_sol))) + 
+  geom_violin() + 
+  geom_boxplot() + 
+  xlab("Lifestyle Category") + ylab("LDL (scaled)") + 
+  scale_fill_manual(name = "h_sol", values = c("#ffb6c1", "gray","#ffb6c1", "gray","#ffb6c1", "gray","#ffb6c1", "gray")) + 
+  theme(text = element_text(size = 10),element_line(linewidth = 1)) + 
+  ggtheme
+dim(no_Outlier_LDL)
+### Cholesterol #############################################################
+BoxPlot_Cholesterol <-ggplot(no_Outlier_Chol, aes(x = h_sol, y=Chol, fill = as.factor(h_sol))) + 
+  geom_violin() + 
+  geom_boxplot() + 
+  xlab("h_sol Category") + ylab("Cholesterol (scaled)") + 
+  scale_fill_manual(name = "h_sol", values = c("lightpink", "gray","lightpink", "gray","lightpink", "gray","lightpink", "gray")) + 
+  theme(text = element_text(size = 9),element_line(linewidth = 1)) + 
+  ggtheme
+dim(no_Outlier_Chol)
+### Trigs ####################################################################
+BoxPlot_Trig <-ggplot(no_Outlier_Trig, aes(x = h_sol, y=Trig, fill = as.factor(h_sol))) + 
+  geom_violin() + 
+  geom_boxplot() + 
+  xlab("h_sol Category") + ylab("Trig (scaled)") + 
+  scale_fill_manual(name = "h_sol", values = c("lightpink", "gray","lightpink", "gray","lightpink", "gray","lightpink", "gray")) + 
+  theme(text = element_text(size = 9),element_line(linewidth = 1)) + 
+  ggtheme
+dim(no_Outlier_Trig)
+### Blood Pressure ##########################################################
+BoxPlot_Pulse_pressure <-ggplot(no_outlier_PP, aes(x=h_sol, y=Pulse_pressure, fill =h_sol)) + 
+  geom_violin() + 
+  geom_boxplot() +
+  xlab("h_sol Category") + ylab("Pulse_pressure (mm Hg)") +
+  scale_fill_manual(name = "h_sol", values = c("darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3")) + 
+  theme(text = element_text(size = 10),element_line(linewidth = 1)) + 
+  ggtheme
+dim(no_outlier_PP)
+##
+BoxPlot_BPsys <-ggplot(no_outlier_PP, aes(x = h_sol, y=BPsystolic, fill = h_sol)) + 
+  geom_violin() + 
+  geom_boxplot() +
+  xlab("h_sol Category") + 
+  ylab("BP sys (mm Hg)") +
+  scale_fill_manual(name = "h_sol", values = c("darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3")) + 
+  theme(text = element_text(size = 10),element_line(linewidth = 1)) + 
+  ggtheme
+##
+BoxPlot_BPdia <-ggplot(no_outlier_BPdia, aes(x = h_sol, y=BPdiastolic, fill = h_sol)) + 
+  geom_violin() + 
+  geom_boxplot() +
+  xlab("h_sol Category") + 
+  ylab("BP dia (mm Hg)") +
+  scale_fill_manual(name = "h_sol", values = c("darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3", "darkgoldenrod1", "antiquewhite3")) + 
+  theme(text = element_text(size = 10),element_line(linewidth = 1)) + 
+  ggtheme
+BoxPlot_Trig
+BoxPlot_Cholesterol
+BoxPlot_LDL
+BoxPlot_HDL
+BoxPlot_BPdia
+BoxPlot_BPsys
+BoxPlot_Pulse_pressure
+
+##
+##By h_sol
+BoxPlot_Pulse_pressure <-ggplot(no_outlier_PP, aes(x = h_sol, y=Pulse_pressure, fill = h_sol)) + geom_violin() + geom_boxplot() +
+  xlab("h_sol Category") + ylab("Pulse_pressure") +
+  scale_fill_manual(name = "h_sol", values = c("darkolivegreen1", "deepskyblue1", "deeppink1", "darkolivegreen1", "deepskyblue1", "deeppink1", "darkolivegreen1")) + theme(text = element_text(size = 10),element_line(linewidth = 1)) + ggtheme
+##
+##
+BoxPlot_BPsys <-ggplot(no_outlier_BPsys, aes(x = h_sol, y=BPsys, fill = h_sol)) + geom_violin() + geom_boxplot() +
+  xlab("h_sol Category") + ylab("BPsys") +
+  scale_fill_manual(name = "h_sol", values = c("darkolivegreen1", "deepskyblue1", "deeppink1", "darkolivegreen1", "deepskyblue1", "deeppink1","darkolivegreen1", "deepskyblue1")) + theme(text = element_text(size = 10),element_line(linewidth = 1)) + ggtheme
+##
+##
+BoxPlot_BPdia <-ggplot(no_outlier_BPdia, aes(x = h_sol, y=BPdia, fill = h_sol)) + geom_violin() + geom_boxplot() +
+  xlab("h_sol Category") + ylab("BPdia") +
+  scale_fill_manual(name = "h_sol", values = c("darkolivegreen1", "deepskyblue1", "deeppink1", "darkolivegreen1", "deepskyblue1", "deeppink1", "darkolivegreen1")) + theme(text = element_text(size = 10),element_line(linewidth = 1)) + ggtheme
+
+```
+## Calculate Frequencies and Plot
+``` {r setup, include=FALSE}
+# Transform the CVD risk column
+table(Cleaned_metadata_file$cvd_risk)
+Cleaned_metadata_file <- Cleaned_metadata_file %>%
+  mutate(CVD_risk_category = case_when(
+    cvd_risk < 10 ~ "Low",
+    cvd_risk >= 10 & cvd_risk <= 20 ~ "Borderline",
+    cvd_risk > 20 ~ "High"
+  ))
+
+# Calculate the frequencies and percentages
+frequencies <- Cleaned_metadata_file %>%
+  group_by(lifestyle, CVD_risk_category) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  group_by(lifestyle) %>%
+  mutate(Percentage = (Count / sum(Count)) * 100)
+
+# Define colors
+colors <- c("Low" = "#e58601", "Borderline" = "#6998ab", "High" = "#8dab7f")
+
+# Create a bar plot with custom colors and add percentage labels
+ggplot(frequencies, aes(x = lifestyle, y = Count, fill = CVD_risk_category)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, size = 3) +
+  scale_fill_manual(values = colors) +
+  ggtitle("Frequency of CVD Risk Categories Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Frequency") +
+  theme_minimal()
+
+# and it has a column 'pressure' and a group column 'group'
+ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Chol)) +
+  geom_boxplot() +
+  ggtitle("Comparison of Pressure Across Lifestyle") +
+  xlab("Lifestyle") +
+  ylab("Cholesterol")
+
+# Define colors
+wes_anderson_colors <- c("Pastoralist" = "#e58601",    # Faded red-brown
+                         "Rural" = "#6998ab",      # Blue-ish
+                         "Market_Integrated" = "#8dab7f") # Greenish
+
+# Create a boxplot with custom colors and mean points
+ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Diet_MI_items, fill = lifestyle)) +
+  geom_boxplot(color = "black", alpha = 0.7) + # Set boxplot borders to black, adjust transparency with alpha
+  scale_fill_manual(values = wes_anderson_colors) + # Use custom colors
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "red") + # Add mean points
+  ggtitle("Boxplot of Diet_MI_items Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Diet_MI_items") +
+  theme_minimal() # Optional: Adds a minimalistic theme to the plot
+
+###########################
+# Calculate the frequencies
+frequencies <- Cleaned_metadata_file %>%
+  group_by(lifestyle, Fetch_water) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  mutate(Fetch_water = as.factor(Fetch_water)) %>%
+  filter(complete.cases(Fetch_water))
+
+# Calculate the total count for each lifestyle to find percentages
+total_counts <- frequencies %>%
+  group_by(lifestyle) %>%
+  summarise(Total = sum(Count)) 
+
+# Merge total_counts back into frequencies
+frequencies <- merge(frequencies, total_counts, by = "lifestyle")
+
+# Calculate the percentage
+frequencies$Percentage <- (frequencies$Count / frequencies$Total) * 100
+head(frequencies)
+frequencies <- frequencies %>%
+  mutate(Fetch_water = case_when(
+    Fetch_water == 1 ~ "Low",
+    Fetch_water == 2 ~ "Medium",
+    Fetch_water == 3 ~ "High",
+    TRUE ~ as.character(Fetch_water) # Keeps other values as is
+  ))
+# Definecolors
+wes_anderson_colors <- c("Low" = "#e58601",    # Faded red-brown
+                         "Medium" = "#6998ab", # Blue-ish
+                         "High" = "#8dab7f")   # Greenish
+
+# Create a bar plot with custom colors and add percentage labels
+ggplot(frequencies, aes(x = lifestyle, y = Count, fill = Fetch_water)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, # Adjust this value as needed to position the labels
+            size = 3) +
+  scale_fill_manual(values = wes_anderson_colors) + # Use custom colors
+  ggtitle("Frequency of Fetch Water Categories Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Frequency") +
+  theme_minimal() # Optional: Adds a minimalistic theme to the plot
+
+###################
+############ Assess Age Effects by Visualize
+table(Cleaned_metadata_file$lifestyle)
+A_data_test <- Cleaned_metadata_file #%>% 
+  ##filter(Gender == "Female")
+
+# Create the scatterplot with the filtered data
+ggplot(A_data_test, aes(x = Age, y = HDL)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  ggtitle("Scatterplot of Age by HDL for Females") +
+  xlab("Age") +
+  ylab("HDL")
+table(Cleaned_metadata_file$lifestyle, Cleaned_metadata_file$Fasting)
+######################################
+# Scaling multiple columns in one step
+Cleaned_metadata_file <- Cleaned_metadata_file %>%
+  mutate_at(vars(BPsystolic,BPdiastolic,Diet_MI_items,HDL, LDL, Trig, Chol, Body_fat_percentage, cvd_risk, BMI, Age, h_sol, Fetch_water, Pulse_pressure), 
+            ~ scale(.) %>% as.vector)
+colnames(Cleaned_metadata_file)
+names(Cleaned_metadata_file)[102] <- "Body_Fat"
+hist(Cleaned_metadata_file$Pulse_pressure)
+
+table(Cleaned_metadata_file$X_longitude)
+dim(Cleaned_metadata_file)
+
+##
+##
+# Transform the Alcohol column
+table(Cleaned_metadata_file$Alcohol)
+Cleaned_metadata_file <- Cleaned_metadata_file %>%
+  mutate(Alcohol_consumption = case_when(
+    Alcohol == 0 ~ "None",
+    Alcohol == 1 ~ "Moderate",
+    Alcohol == 2 ~ "High"
+  ))
+
+# Calculate the frequencies and percentages
+frequencies <- Cleaned_metadata_file %>%
+  group_by(lifestyle, Alcohol_consumption) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  group_by(lifestyle) %>%
+  mutate(Percentage = (Count / sum(Count)) * 100)
+
+# Define colors
+colors <- c("None" = "#e58601", "Moderate" = "#6998ab", "High" = "#8dab7f")
+
+# Create a bar plot with custom colors and add percentage labels
+ggplot(frequencies, aes(x = lifestyle, y = Count, fill = Alcohol_consumption)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, size = 3) +
+  scale_fill_manual(values = colors) +
+  ggtitle("Frequency of Alcohol Consumption Across Lifestyle Categories") +
+  xlab("Lifestyle Category") +
+  ylab("Frequency") +
+  theme_minimal()
+```
+## Improved Map that isn't working so far
+```{r setup, include=FALSE}
+colnames(Cleaned_metadata_file)
+# Trying to create a map with pie charts of CVD risk frequencies
+library(leaflet)
+library(htmltools)
+
+# Create a leaflet map
+my_map <- leaflet(Cleaned_metadata_file) %>%
+  addTiles()  # Add default OpenStreetMap tiles
+
+# Define a function to create custom pie chart HTML content
+createPieChart <- function(Low, Medium, High) {
+  pie_values <- c(Low, Medium, High)
+  pie_colors <- c("#e58601", "#6998ab", "#8dab7f")
+
+  # Create an empty string to store the pie chart HTML
+  pie_chart_html <- ""
+
+  # Loop through each value and color pair
+  for (i in 1:length(pie_values)) {
+    value <- pie_values[i]
+    color <- pie_colors[i]
+    
+    # Calculate the angle for the pie slice
+    angle <- 360 * value / sum(pie_values)
+    
+    # Create a div element for the pie slice
+    slice_html <- sprintf('<div class="slice" style="background-color: %s; transform: rotate(%fdeg);"></div>', color, angle)
+    
+    # Append the slice to the pie chart HTML
+    pie_chart_html <- paste(pie_chart_html, slice_html, sep = "")
+  }
+
+  # Wrap the pie chart HTML in a <div> element with the "pie-chart" class
+  pie_chart_html <- sprintf('<div class="pie-chart">%s</div>', pie_chart_html)
+
+  return(pie_chart_html)
+}
+
+# Add custom pie chart markers for each latitude and longitude point
+my_map <- my_map %>%
+  addCircleMarkers(
+    lng = ~X_longitude,
+    lat = ~Y_latitude,
+    popup = ~paste("Location: ", Sampling_location),
+    label = ~createPieChart(Fetch_water == "Low", Fetch_water == "Medium", Fetch_water == "High"),
+    labelOptions = labelOptions(noHide = TRUE, className = "pie-chart-label")
+  )
+
+# Define the CSS file as an external dependency
+custom_css_link <- htmlDependency(
+  name = "custom-css",
+  version = "1.0.0",
+  src = "/Users/bm0211/RegEx/Review-the-Lit/styles.css",  # Replace with the actual path to your CSS file
+  script = "styles.css"
+)
+
+# Attach the CSS dependency to the HTML content
+my_map <- htmltools::attachDependencies(my_map, custom_css_link)
+
+# Display the map
+my_map
+
+```
+
+## Statistical differences tests Regression with different terms 
+```{r setup, include=FALSE}
+Cleaned_metadata_file_subset <- Cleaned_metadata_file %>%
+  mutate(Fasting = case_when(
+    Fasting < "YES" ~ 1,
+    Fasting > "NO" ~ 0
+  ))
+## Remove NA in Fasting and Activity Column
+Cleaned_metadata_file_subset <- Cleaned_metadata_file_subset[complete.cases(Cleaned_metadata_file_subset$Fasting) & Cleaned_metadata_file_subset$Fasting != "", ]
+Cleaned_metadata_file_subset <- Cleaned_metadata_file_subset[complete.cases(Cleaned_metadata_file_subset$Fetch_water) & Cleaned_metadata_file_subset$Fetch_water != "", ]
+dim(Cleaned_metadata_file_subset)
+colnames(Cleaned_metadata_file_subset)
+table(Cleaned_metadata_file_subset$Fasting)
+female_data <- subset(Cleaned_metadata_file_subset, Gender == "Female")
+male_data <- subset(Cleaned_metadata_file_subset, Gender == "Male")
+Pastoralist_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Pastoralist")
+rural_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Rural")
+Market_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Market_Integrated")
+table(Cleaned_metadata_file_subset$lifestyle)
+table(Cleaned_metadata_file_subset$Gender[Cleaned_metadata_file_subset$Cigarette == 1])
+table(Cleaned_metadata_file_subset$Gender[Cleaned_metadata_file_subset$Fetch_water == "2"])
+table(Cleaned_metadata_file_subset$Fetch_water)
+
+```
+## The Regression Model
+```{r setup, include=FALSE}
+# Create a vector of response variable names
+response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat","Pulse_pressure", "Trig", "cvd_risk")
+# Create an empty data frame to store the results
+results_df <- data.frame(ResponseVariable = character(0), 
+                         Coefficient = numeric(0), 
+                         StdError = numeric(0), 
+                         tValue = numeric(0), 
+                         PValue = numeric(0),
+                         Predictor = character(0))
+# Loop through each response variable
+for (response_var in response_vars) {
+  # Define the formula for the linear model
+  formula <- as.formula(paste(response_var,"~  h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol"))
+  ### Terms to Include in formula
+  ###"~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Age * h_sol) + (Gender * h_sol) + (Gender * Age)"
+  # Fit the linear regression model
+  model <- lm(formula, data = Cleaned_metadata_file_subset)
+
+  # Define the formula for the reduced linear model "without term that is in full model"
+  formula_reduced <- as.formula(paste(response_var, " ~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Fasting"))
+
+  # Fit the reduced linear regression model
+  model_reduced <- lm(formula_reduced, data = Cleaned_metadata_file_subset)
+
+  # Calculate RMSE for both models
+  rmse_full <- sqrt(mean((model$residuals)^2))
+  rmse_reduced <- sqrt(mean((model_reduced$residuals)^2))
+
+  # Check which model has a lower RMSE and update the best model accordingly
+  if (rmse_full < rmse_reduced) {
+    best_model <- "Full Model (Used for plotting)"
+    best_mse <- rmse_full
+  } else {
+    best_model <- "Reduced Model (modified to test inclusion of term using MSE)"
+    best_mse <- rmse_reduced
+  }
+
+  # Print a message indicating the best model for the current response variable
+  cat("Response Variable:", response_var, "\n")
+  cat("Best Model:", best_model, "\n")
+  cat("MSE of Best Model:", best_mse, "\n\n")
+
+  # Get the summary of the full model
+  model_summary_full <- summary(model)
+
+  # Extract the coefficients and standard errors for the full model
+  coefficients_full <- coef(model_summary_full)
+  std_errors_full <- coef(summary(model))[, "Std. Error"]
+
+  # Get all predictor names (excluding the intercept)
+  predictor_names_full <- names(coefficients_full)[-1]
+
+  # Create data frames for the results of the full and reduced models
+  results_full <- data.frame(ResponseVariable = response_var,
+                             Coefficient = coefficients_full,
+                             StdError = std_errors_full,
+                             Predictor = rownames(model_summary_full$coefficients))
+
+  # Append the results to the results data frame
+  results_df <- rbind(results_df, results_full)
+}
+# Print the final message indicating which model performed better overall
+
+head(results_df)
+# Save the results to a CSV file
+write.csv(results_df, "linear_regression_results.csv", row.names = FALSE)
+```
+## Plot and compare slopes of linear regression
+```{r setup, include=FALSE}
+# Load the coefplot package
+library(coefplot)
+
+# Create a vector of response variable names
+response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat", "Pulse_pressure", "Trig", "cvd_risk")
+
+# Create an empty data frame to store the results
+results_df <- data.frame(ResponseVariable = character(0),
+                         Coefficient = numeric(0),
+                         StdError = numeric(0),
+                         tValue = numeric(0),
+                         PValue = numeric(0),
+                         Predictor = character(0))
+
+# Create an empty list to store slope plots
+slope_plots <- list()
+
+# Loop through each response variable
+for (response_var in response_vars) {
+  # Define the formula for the linear model
+  formula <- as.formula(paste(response_var, "~  h_sol + Gender + Age + Diet_MI_items + Fetch_water + Fasting"))
+  
+  # Fit the linear regression model
+  model <- lm(formula, data = Cleaned_metadata_file_subset)
+  
+  # Get the summary of the model
+  model_summary <- summary(model)
+  
+  # Extract the coefficient for h_sol (slope)
+  coefficient_h_sol <- coef(model_summary)["h_sol", "Estimate"]
+  
+  # Extract the standard error, t-value, and p-value for the slope
+  std_error_h_sol <- coef(model_summary)["h_sol", "Std. Error"]
+  t_value_h_sol <- coef(model_summary)["h_sol", "t value"]
+  p_value_h_sol <- coef(model_summary)["h_sol", "Pr(>|t|)"]
+  
+  # Append the results to the results data frame
+  results_df <- rbind(results_df, data.frame(ResponseVariable = response_var,
+                                             Coefficient = coefficient_h_sol,
+                                             StdError = std_error_h_sol,
+                                             tValue = t_value_h_sol,
+                                             PValue = p_value_h_sol,
+                                             Predictor = "h_sol"))
+  
+  # Create a slope plot using coefplot
+  slope_plot <- coefplot(model, intercept = FALSE)
+  
+  # Customize the slope plot title using ggtitle
+  slope_plot <- slope_plot + ggtitle(paste("Slope Estimate for", response_var))
+  
+  # Append the slope plot to the list
+  slope_plots[[response_var]] <- slope_plot
+}
+
+# Print the results data frame
+print(results_df)
+
+# Print the slope plots
+for (response_var in response_vars) {
+  print(slope_plots[[response_var]])
+}
+
+
+```
+## Heat Plots
+```{r setup, include=FALSE}
+# Sample data (replace with your own data)
+# Here, 'effect_size' is the effect size column, and 'p_value' is the p-value column
+Heat_map <- import("linear_regression_results.csv")
+Heat_map <- Heat_map[Heat_map$Predictor != "(Intercept)", ]
+Heat_map <- Heat_map[Heat_map$Predictor != "Alcohol", ]
+colnames( Heat_map)
+names(Heat_map)[4] <- "tValue"
+names(Heat_map)[5] <- "PValue"
+table(Heat_map$Predictor)
+
+###
+##########
+###
+custom_palette <- c("blue", "white","yellow", "red")
+Effect_plot <- ggplot(Heat_map, aes(x = ResponseVariable, y = Predictor, fill = tValue)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = custom_palette,
+                       limits = c(-8, 9),
+                       breaks = seq(-3, 10, by = 3),
+                       na.value = "red") +
+  geom_text(aes(label = ifelse(PValue < 0.05, "p<0.05", "")), vjust = 1.5, size = 3) +
+  labs(x = "Response Variable", y = "Predictor", fill = "Effect Size") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  ggtitle("Heatmap of Effect Sizes by Predictor")
+# Specify the file name and dimensions
+png("Effect_plot.png", width = 1000, height = 800, units = "px", res = 150)
+# Print the ggplot2 plot to the PNG file
+print(Effect_plot)
+# Close the PNG device
+dev.off()
+
+#####
+########
+#############
+fill_colors <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#aec7e8")
+# Create a grouped bar plot highlighting significant bars
+ggplot(Heat_map, aes(x = ResponseVariable, y = Predictor, color = PValue < 0.05, size = abs(tValue))) +
+  geom_point() +
+  scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +
+  scale_size_continuous(range = c(1, 8)) +
+  labs(x = "Response Variable", y = "Predictor", size = "Effect size Magnitude") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  ggtitle("Scatter Plot of Effect Sizes by Predictor")
+###########
+########
+##############
+```
+## ANOVA with CVD Risk 
+```{r setup, include=FALSE}
+## Check Best Fit model using AIC and BIC
+# Function to fit models and calculate AIC and BIC
+fit_and_evaluate <- function(formula, data) {
+  model <- lm(formula, data = data)
+  aic <- AIC(model)
+  bic <- BIC(model)
+  return(list(model = model, aic = aic, bic = bic))
+}
+
+response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat", "Pulse_pressure", "Trig", "cvd_risk")
+
+for (response_var in response_vars) {
+  # Define the formula for the null model and other models
+  formulas <- list(
+    null = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water")),
+    null_fasting = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Fasting")),
+    model_null_alcohol = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol")),
+    null_GenderxAge = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Age * Gender)")),
+    model_fasting_alcohol = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Fasting + Alcohol")),
+    model_alcohol_GenderxAge = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol + (Age * Gender)")),
+    model_alcohol_LifexAge = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol + (h_sol * Age)"))
+  )
+  # Fit models and calculate AIC and BIC
+  results <- lapply(formulas, fit_and_evaluate, data = Cleaned_metadata_file_subset)
+
+  # Find the model with the lowest AIC and BIC
+  aic_values <- sapply(results, function(x) x$aic)
+  bic_values <- sapply(results, function(x) x$bic)
+  best_aic_model <- names(results)[which.min(aic_values)]
+  best_bic_model <- names(results)[which.min(bic_values)]
+
+  # Print the AIC and BIC values
+  cat("Response Variable:", response_var, "\n")
+  cat("Best AIC model:", best_aic_model, "AIC:", min(aic_values), "\n")
+  cat("Best BIC model:", best_bic_model, "BIC:", min(bic_values), "\n")
+}
+
+##
+
+##
+
+##
+
+##
+res_aov_CVDrisk <- aov(cvd_risk ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_CVDrisk)
+hist(res_aov_CVDrisk$residuals)
+qqPlot(res_aov_CVDrisk$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+
+#### ANOVA with diet and activity
+res_aov_life <- aov(cvd_risk ~ Fetch_water * Diet_MI_items * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_life)
+hist(res_aov_life$residuals)
+qqPlot(res_aov_life$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##h_sol ANOVA 3 way
+##Pulse
+res_aov_PulseP <- aov(Pulse_pressure ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_PulseP)
+hist(res_aov_PulseP$residuals)
+qqPlot(res_aov_PulseP$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##HDL
+res_aov_HDL <- aov(HDL ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_HDL)
+hist(res_aov_HDL$residuals)
+qqPlot(res_aov_HDL$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##LDL
+res_aov_LDL <- aov(LDL ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_LDL)
+hist(res_aov_LDL$residuals)
+qqPlot(res_aov_LDL$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##Cholesterol
+res_aov_Cholesterol <- aov(Chol ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_Cholesterol)
+hist(res_aov_Cholesterol$residuals)
+qqPlot(res_aov_Cholesterol$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##Trigs
+res_aov_Trigs <- aov(Trig ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_Trigs)
+hist(res_aov_Trigs$residuals)
+qqPlot(res_aov_Trigs$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##Pulse pressure
+##Trigs
+res_aov_PP <- aov(Pulse_pressure ~ h_sol * Gender * Age,
+  data = Cleaned_metadata_file
+)
+summary(res_aov_PP)
+hist(res_aov_PP$residuals)
+qqPlot(res_aov_PP$residuals,
+  id = FALSE # id = FALSE to remove point identification
+)
+##Effects of Age [Regression]
+ggplot(Cleaned_metadata_file[which(Cleaned_metadata_file$Age >18),], aes(x =Age, y = Pulse_pressure)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  ggtheme
+
+##Summary Stats
+colnames(Cleaned_metadata_file)
+table(Cleaned_metadata_file$lifestyle)
+mydata_Gender_h_sol <- Cleaned_metadata_file %>% 
+  filter(lifestyle == "Rural") %>%
+  summarise(
+    HDL_mean = mean(na.omit(HDL)),
+    HDL_sd = sd(na.omit(HDL)),
+    LDL_mean = mean(na.omit(LDL)),
+    LDL_sd = sd(na.omit(LDL)),
+    Chol_mean = mean(na.omit(Chol)),
+    Chol_sd = sd(na.omit(Chol)),
+    PP_mean = mean(na.omit(Pulse_pressure)),
+    PP_sd = sd(na.omit(Pulse_pressure)),
+    Trig_mean = mean(na.omit(Trig)),
+    Trig_sd = sd(na.omit(Trig)),
+    Sys_mean = mean(na.omit(BPsystolic)),
+    Sys_sd = sd(na.omit(BPsystolic)),
+    dia_mean = mean(na.omit(BPdiastolic)),
+    dia_sd = sd(na.omit(BPdiastolic)),
+  )
+view(mydata_Gender_h_sol) 
+table(Cleaned_metadata_file$Gender == "Male")
+```
+## Multiple Populations
+
+```{r setup, include=FALSE}
+##Read the data and structure the dataframe
+HDL_across_pops <- import("/Users/bm0211/RegEx/Review-the-Lit/Meta_analysis_Data_and_Results.xlsx", which = "Meta_analysis_Data")
+Meta_analysis_data = HDL_across_pops
+colnames(Meta_analysis_data)
+SetmissingValues(Meta_analysis_data)
+head(Meta_analysis_data)
+names(Meta_analysis_data)[4]= "Name_of_Cohort"
+names(Meta_analysis_data)[6]= "Participants_number"
+names(Meta_analysis_data)[7]= "HDL_Mean"
+names(Meta_analysis_data)[8]= "HDL_sd"
+names(Meta_analysis_data)[9]= "LDL_Mean"
+names(Meta_analysis_data)[10]= "LDL_sd"
+names(Meta_analysis_data)[11]= "Chol_Mean"
+names(Meta_analysis_data)[12]= "Chol_sd"
+names(Meta_analysis_data)[13]= "Trig_Mean"
+names(Meta_analysis_data)[14]= "Trig_sd"
+names(Meta_analysis_data)[15]= "Systolic_Mean"
+names(Meta_analysis_data)[16]= "Systolic_sd"
+names(Meta_analysis_data)[17]= "Diastolic_Mean"
+names(Meta_analysis_data)[18]= "Diastolic_sd"
+names(Meta_analysis_data)[19]= "BMI_mean"
+names(Meta_analysis_data)[20]= "BMI_sd"
+names(Meta_analysis_data)[21]= "Body_fat_mean"
+names(Meta_analysis_data)[22]= "Body_fat_sd"
+Meta_analysis_data <- Meta_analysis_data[!is.na(Meta_analysis_data$Name_of_Cohort),]
+Meta_analysis_data$HDL_Mean <- as.numeric(Meta_analysis_data$HDL_Mean)
+Meta_analysis_data$HDL_sd <- as.numeric(Meta_analysis_data$HDL_sd)
+Meta_analysis_data$Participants_number<- as.numeric(Meta_analysis_data$Participants_number)
+Meta_analysis_data$LDL_Mean <- as.numeric(Meta_analysis_data$LDL_Mean)
+Meta_analysis_data$LDL_sd <- as.numeric(Meta_analysis_data$LDL_sd)
+Meta_analysis_data$Chol_Mean <- as.numeric(Meta_analysis_data$Chol_Mean)
+Meta_analysis_data$Chol_sd <- as.numeric(Meta_analysis_data$Chol_sd)
+Meta_analysis_data$Systolic_Mean <- as.numeric(Meta_analysis_data$Systolic_Mean)
+Meta_analysis_data$Systolic_sd <- as.numeric(Meta_analysis_data$Systolic_sd)
+Meta_analysis_data$Diastolic_Mean <- as.numeric(Meta_analysis_data$Diastolic_Mean)
+Meta_analysis_data$Diastolic_sd <- as.numeric(Meta_analysis_data$Diastolic_sd)
+Meta_analysis_data$Trig_Mean<- as.numeric(Meta_analysis_data$Trig_Mean)
+Meta_analysis_data$Trig_sd<- as.numeric(Meta_analysis_data$Trig_sd)
+Meta_analysis_data$BMI_mean<- as.numeric(Meta_analysis_data$BMI_mean)
+Meta_analysis_data$BMI_sd<- as.numeric(Meta_analysis_data$BMI_sd)
+
+library(rpsychi)
+head(Meta_analysis_data)
+str(Meta_analysis_data)
+Meta_analysis_data <- Meta_analysis_data[!is.na(Meta_analysis_data$HDL_sd),]
+Meta_analysis_data <- Meta_analysis_data[!is.na(Meta_analysis_data$HDL_Mean),]
+colnames(Meta_analysis_data)
+Meta_analysis_data$LDL_HDL_Ratio <- Meta_analysis_data$LDL_Mean / Meta_analysis_data$HDL_Mean
+```
+## Plots with the meta-data
+```{r setup, include=FALSE}
+## Replace values with Chol, HDL, LDL as needed
+Meta_analysis_data <- Meta_analysis_data %>%
+  mutate(Name_of_Cohort = fct_reorder(Name_of_Cohort, HDL_Mean))
+
+Thewholeplot <- Meta_analysis_data %>%
+  ggplot(aes(x = Name_of_Cohort, y = HDL_Mean, fill = Ancestry)) +
+  geom_point(size = 5, shape = 21, color = "white") + # Shape 21 for filled points
+  geom_errorbar(aes(ymin = HDL_Mean - HDL_sd, ymax = HDL_Mean + HDL_sd), width = 0.2) +
+  labs(title = "HDL Levels across populations", x = "Name_of_Cohort", y = "HDL Level (mg/dL)") +
+  scale_fill_manual(values = my_colors) +
+  geom_label_repel(aes(label = Label, fill = Ancestry), color = "white",
+                   box.padding = 0.35,
+                   point.padding = 0.5,
+                   segment.color = 'grey50', 
+                   max.overlaps = 15) + geom_hline(yintercept = 40) + geom_hline(yintercept = 60)+ ggtheme + coord_flip()
+
+print(Thewholeplot)
+
+
+##
+##
+##
+FOR_ldl = Meta_analysis_data[!is.na(Meta_analysis_data$LDL_Mean),]
+Thewholeplot1 = ggplot(FOR_ldl, aes(x= fct_reorder(Region, HDL_Mean), y = LDL_Mean, color =Ancestry, label = Label)) + 
+  geom_point(size=4) + 
+  geom_errorbar(aes(ymin=LDL_Mean-LDL_sd, ymax=LDL_Mean+LDL_sd, width=.2)) + 
+  labs(title = "LDL Variation across populations", x="Region", y=" LDL Level (mg/dL)")
+Thewholeplot1 + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+##
+##
+Thewholeplot2 = ggplot(FOR_ldl, aes(x= fct_reorder(Region, HDL_Mean), y = LDL_Mean, color =Ancestry, label = Label)) + 
+  geom_point(size=4) + 
+  geom_errorbar(aes(ymin=LDL_Mean-LDL_sd, ymax=LDL_Mean+LDL_sd, width=.2)) + 
+  labs(title = "LDL Variation across populations", x="Region", y=" LDL Level (mg/dL)")
+
+Thewholeplot2 + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_hline(yintercept = 100)+ 
+  geom_hline(yintercept = 120) + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+###
+##
+HDL_CP1 = Meta_analysis_data %>%
+  mutate(Name_of_Cohort = fct_reorder(Region, Meta_analysis_data$HDL_Mean)) %>%
+  ggplot(aes(x=Region, y = HDL_Mean, color =Ancestry, label=Label)) + 
+  geom_point(size=4) + 
+  geom_errorbar(aes(ymin=HDL_Mean-HDL_sd, ymax=HDL_Mean+HDL_sd, width=.2)) + 
+  labs(title = "HDL VARIATION", x="Region", y="HDL Level") + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+HDL_CP1 + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_hline(yintercept = 40) + 
+  geom_hline(yintercept = 60)
+####
+##
+HDL_CP2 = ggplot(Meta_analysis_data, aes(x= reorder(Region, HDL_Mean), y = LDL_HDL_Ratio, color =Ancestry, label=Label )) + 
+  geom_point(size=4) + 
+  labs(title = "LDL_HDL_Ratio Comparison", x="Name_of_cohort", y="LDL_HDL_Ratio") + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+HDL_CP2 + 
+scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+ggtheme + 
+geom_hline(yintercept = 2)
+
+
+```
+##The other plots
+
+```{r setup, include=FALSE}
+##c("aquamarine", "", "blue", "", "green","lightpink", "yellow2", "darkred", "darkorchid1", "red", "grey27", "darkgoldenrod1")
+##Pressure visualization
+colnames(Meta_analysis_data)
+
+pressure_cleveland_plot = select(Meta_analysis_data, c(1:7,15:18,29))
+SetmissingValues(pressure_cleveland_plot)
+pressure_cleveland_plot$Systolic_Mean <- as.numeric(pressure_cleveland_plot$Systolic_Mean)
+str(pressure_cleveland_plot)
+pressure_cleveland_plot <- pressure_cleveland_plot[which(pressure_cleveland_plot$Systolic_Mean != "NA"),]
+table(pressure_cleveland_plot$Systolic_Mean)
+CPressure = pressure_cleveland_plot %>%
+  mutate(Name_of_Cohort = fct_reorder(Region, pressure_cleveland_plot$HDL_Mean)) %>%
+  ggplot(aes(x=Region, y = Systolic_Mean, color =Ancestry)) + 
+  geom_point(size=4) + 
+  geom_errorbar(aes(ymin=Systolic_Mean-Systolic_sd, ymax=Systolic_Mean+Systolic_sd, width=.2)) + 
+  labs(title = "Systolic Variation", x="Region", y="Systolic (mm Hg)")
+CPressure + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_hline(yintercept = 120) + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+
+##
+##
+CPressure2 = pressure_cleveland_plot %>%
+  mutate(Name_of_Cohort = fct_reorder(Region, pressure_cleveland_plot$HDL_Mean)) %>%
+  ggplot(aes(x=Region, y = Diastolic_Mean, color =Ancestry)) + 
+  geom_point(size=4) + 
+  geom_errorbar(aes(ymin=Diastolic_Mean-Diastolic_sd, ymax=Diastolic_Mean+Diastolic_sd, width=.2)) + 
+  labs(title = "Diastolic Variation", x="Region", y="Diastolic (mm Hg)")
+CPressure2 + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_hline(yintercept = 80) + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+
+##
+##
+pressure_cleveland_plot$pulse_pressure <- pressure_cleveland_plot$Systolic_Mean - pressure_cleveland_plot$Diastolic_Mean
+head(pressure_cleveland_plot)
+#########
+CPressure3 = pressure_cleveland_plot %>%
+  mutate(Name_of_Cohort = fct_reorder(Region, pressure_cleveland_plot$HDL_Mean)) %>%
+  ggplot(aes(x=Region, y = pulse_pressure, color =Ancestry)) + 
+  geom_point(size=4) + 
+  labs(title = "Pulse Pressure Variation", x="Region", y="Pulse_Pressure (mm Hg)")
+CPressure3 + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_hline(yintercept = 40) + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+##
+##ratio
+##
+Meta_analysis_data$LDL_HDL_Ratio <- as.numeric(Meta_analysis_data$LDL_HDL_Ratio)
+table(Meta_analysis_data$LDL_HDL_Ratio)
+str(Meta_analysis_data)
+LDRatio = ggplot(Meta_analysis_data, aes(x= fct_reorder(Region, HDL_Mean), y = LDL_HDL_Ratio, color =Population_Description)) + 
+  geom_point(size=4) + 
+  labs(title = "LDL / HDL Ratio", x="Region", y=" Ratio ")
+LDRatio + 
+  scale_color_manual(values = c("deeppink","darkorchid1","green","grey","cornflowerblue", "yellow2", "red", "darkorchid1", "azure2", "chartreuse4", "blue4", "black", "grey", "darkseagreen", "cyan2", "gold","black")) + 
+  ggtheme + 
+  geom_label_repel(aes(label = Label),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')
+##
+##
+##
+colnames(Meta_analysis_data)
+
+##Pheno file format == Fam, Indiv.ID, Paternal.ID, Maternal.ID, Sex [Male =1, Female =2], Phenotype
+##
+```
+## ESTIMATING HERITABILITY 
+```{r}
+##Heriatability = degree of phenotypic variance attributtable to additive genetic effects
+## Done on another script
+##
+
+```
