@@ -46,9 +46,8 @@ mydata_Gender_h_sol <- Cleaned_metadata_file %>%
     dia_mean = mean(na.omit(BPdiastolic)),
     dia_sd = sd(na.omit(BPdiastolic)),
   )
-view(mydata_Gender_h_sol) 
-table(Cleaned_metadata_file$Gender)
-# Transform the CVD risk column for ploting before scaling 
+##view(mydata_Gender_h_sol) 
+# Transform the CVD risk column for plotting before scaling 
 table(Cleaned_metadata_file$cvd_risk)
 Cleaned_metadata_file <- Cleaned_metadata_file %>%
   mutate(CVD_risk_category = case_when(
@@ -95,6 +94,11 @@ hist(transformed_data$Diet_MI_items)
 ```
 ## Plot for CVD risk frequency
 ```{r cars}
+##Order
+Cleaned_metadata_file$lifestyle <- factor(Cleaned_metadata_file$lifestyle, 
+                                          levels = c("Pastoralist", "Rural", "Market_Integrated"))
+frequencies$lifestyle <- factor(frequencies$lifestyle, 
+                                          levels = c("Pastoralist", "Rural", "Market_Integrated"))
 # Define colors
 BenG_Pallete <- c("Borderline" = "#e58601", "Low" = "gray", "High" = "#8dab7f")
 # Create a bar plot with custom colors and add percentage labels
@@ -121,12 +125,19 @@ dev.off()
 BenG_Pallete <- c("Rural" = "#e58601",    # Faded red-brown
                          "Market_Integrated" = "#6998ab",      # Blue-ish
                          "Pastoralist" = "#8dab7f") # Greenish
-ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Chol, fill = lifestyle)) +
+# Create the boxplot
+Chol_PLOT <- ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Chol, fill = lifestyle)) +
   geom_boxplot() +
   scale_fill_manual(values = BenG_Pallete) +
-  ggtitle("Comparison of Pressure Across Lifestyle") +
+  ggtitle("Comparison of Cholesterol Across Lifestyle") +
   xlab("Lifestyle") +
-  ylab("Pressure")
+  ylab("Cholesterol (Scaled)")
+##
+png("Chol_PLOT.png", width = 1000, height = 800, units = "px", res = 150)
+# Print the ggplot2 plot to the PNG file
+print(Chol_PLOT)
+# Close the PNG device
+dev.off()
 ```
 ## Plot for Diet differences lifestyles
 ```{r cars}
@@ -233,7 +244,7 @@ png("Alcohol_plot.png", width = 1000, height = 800, units = "px", res = 150)
 print(Alcohol_plot)
 # Close the PNG device
 dev.off()
-  ```
+```
 ## Stats
 ```{r pressure, echo=FALSE}
 ## Create New Data-frame and structure it
