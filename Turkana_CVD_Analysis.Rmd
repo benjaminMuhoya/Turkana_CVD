@@ -46,6 +46,10 @@ mydata_Gender_h_sol <- Cleaned_metadata_file %>%
     dia_mean = mean(na.omit(BPdiastolic)),
     dia_sd = sd(na.omit(BPdiastolic)),
   )
+##
+table(Cleaned_metadata_file$Gender)
+table(Cleaned_metadata_file$lifestyle)
+dim(Cleaned_metadata_file)
 ##view(mydata_Gender_h_sol) 
 # Transform the CVD risk column for plotting before scaling 
 table(Cleaned_metadata_file$cvd_risk)
@@ -86,39 +90,32 @@ transform_yeojohnson <- function(data, columns) {
 # Apply the transformation
 transformed_data <- transform_yeojohnson(Cleaned_metadata_file, columns_to_assess)
 ##
-hist(transformed_data$Pulse_pressure)
-hist(transformed_data$Body_Fat)
-hist(transformed_data$cvd_risk)
-hist(transformed_data$Chol)
-hist(transformed_data$Diet_MI_items)
 ```
 ## Plot for CVD risk frequency
 ```{r cars}
 ##Order
 Cleaned_metadata_file$lifestyle <- factor(Cleaned_metadata_file$lifestyle, 
                                           levels = c("Pastoralist", "Rural", "Market_Integrated"))
-frequencies$lifestyle <- factor(frequencies$lifestyle, 
-                                          levels = c("Pastoralist", "Rural", "Market_Integrated"))
-# Define colors
-BenG_Pallete <- c("Borderline" = "#e58601", "Low" = "gray", "High" = "#8dab7f")
-# Create a bar plot with custom colors and add percentage labels
-CVD_PLOT <- ggplot(frequencies, aes(x = lifestyle, y = Percentage, fill = CVD_risk_category)) +
+# Define your custom palette for lifestyle categories
+BenG_Pallete <- c("Rural" = "#e58601",    # Faded red-brown
+                  "Market_Integrated" = "#6998ab",      # Blue-ish
+                  "Pastoralist" = "#8dab7f") # Greenish
+# Filter data for 'Borderline' CVD risk category only
+borderline_data <- frequencies[frequencies$CVD_risk_category == "Borderline", ]
+# Create a bar plot with custom colors for the 'Borderline' category
+CVD_PLOT <- ggplot(borderline_data, aes(x = lifestyle, y = Percentage, fill = lifestyle)) +
   geom_bar(stat = "identity", position = position_dodge()) +
   geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
             position = position_dodge(width = 0.9), 
             vjust = -0.25, size = 3) +
   scale_fill_manual(values = BenG_Pallete) +
-  ggtitle("Frequency of CVD Risk Categories Across Lifestyle Categories") +
+  ggtitle("Frequency of 'Borderline' CVD Risk Category Across Lifestyle Categories") +
   xlab("Lifestyle Category") +
-  ylab("Percentage") +
-  theme_minimal()
-  ##
-##
-png("CVD_PLOT.png", width = 1000, height = 800, units = "px", res = 150)
-# Print the ggplot2 plot to the PNG file
+  ylab("Percentage") + ggtheme
+# Print the plot
 print(CVD_PLOT)
-# Close the PNG device
-dev.off()
+# save the plot
+ggsave("CVD_Borderline_Plot.png", CVD_PLOT, width = 8.5, height = 8.5, units = "in",dpi = 300)
 ```
 ## Plot for cholesterol differences lifestyles
 ```{r cars}
@@ -141,25 +138,49 @@ dev.off()
 ```
 ## Plot for Diet differences lifestyles
 ```{r cars}
+Cleaned_metadata_file_subset$lifestyle <- factor(Cleaned_metadata_file_subset$lifestyle, 
+                                          levels = c("Pastoralist", "Rural", "Market_Integrated"))
+
 # Create a boxplot with custom colors and mean points
+# Ensure 'Diet_MI_items' is numeric and exclude NAs
+Cleaned_metadata_file_subset$Diet_MI_items <- as.numeric(Cleaned_metadata_file_subset$Diet_MI_items)
+# Remove rows with NA in 'Diet_MI_items'
+Cleaned_metadata_file <- Cleaned_metadata_file_subset[!is.na(Cleaned_metadata_file_subset$Diet_MI_items), ]
+# Convert 'lifestyle' to a factor
+Cleaned_metadata_file$lifestyle <- as.factor(Cleaned_metadata_file$lifestyle)
+# Perform ANOVA
+aov_results <- aov(Diet_MI_items ~ lifestyle, data = Cleaned_metadata_file)
+anova_summary <- summary(aov_results)
+# Extract the ANOVA p-value
+anova_p_value <- anova_summary[[1]]$'Pr(>F)'[1]
+# Define the custom color palette for the 'lifestyle' categories
+BenG_Pallete <- c("Rural" = "#e58601",
+                  "Market_Integrated" = "#6998ab",
+                  "Pastoralist" = "#8dab7f")
+# Create the boxplot with custom colors and mean points
 Diet_plot <- ggplot(Cleaned_metadata_file, aes(x = lifestyle, y = Diet_MI_items, fill = lifestyle)) +
-  geom_boxplot(color = "black", alpha = 0.7) + # Set boxplot borders to black, adjust transparency with alpha
-  scale_fill_manual(values = BenG_Pallete) + # Use custom colors
-  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "red") + # Add mean points
+  geom_boxplot(color = "black", alpha = 0.7) +
+  scale_fill_manual(values = BenG_Pallete) +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "red") +
   ggtitle("Boxplot of Diet_MI_items Across Lifestyle Categories") +
   xlab("Lifestyle Category") +
   ylab("MI Food Score (Scaled)") +
-  theme_minimal() # Optional: Adds a minimalistic theme to the plot
-##
-##
-png("Diet_plot.png", width = 1000, height = 800, units = "px", res = 150)
-# Print the ggplot2 plot to the PNG file
+  theme_minimal()
+# If ANOVA is significant, add the p-value to the plot
+if(!is.na(anova_p_value) && anova_p_value < 0.05) {
+  Diet_plot <- Diet_plot + 
+    annotate("text", x = Inf, y = Inf, label = sprintf("ANOVA p-value: %.3f", anova_p_value), 
+             vjust = 1.5, hjust = 1, size = 3.5, color = "black")
+}
+# Print the plot
 print(Diet_plot)
-# Close the PNG device
-dev.off()
+# Save the plot to a file
+ggsave("Diet_Boxplot_with_ANOVA.png", Diet_plot, width = 10, height = 6, dpi = 300)
+getwd()
 ```
 ## Plot of Fetch Water Frequency
 ```{r cars}
+colnames(Cleaned_metadata_file)
 # Calculate the frequencies
 frequencies <- Cleaned_metadata_file %>%
   group_by(lifestyle, Fetch_water) %>%
@@ -182,194 +203,269 @@ frequencies <- frequencies %>%
     TRUE ~ as.character(Fetch_water) # Keeps other values as is
   ))
 # Define Activitycolors
+act_Pallete <- c("Less than 1 Hour" = "gray",    # Faded red-brown
+                         "Few Hours Per Day" = "#6ABD45", # Blue-ish
+                         "Most of the Day" = "#FF6A2D")   # Greenish
 table(frequencies$Fetch_water)
-act_Pallete <- c("Less than 1 Hour" = "gray",    # Faded red-brown # Low
-                         "Few Hours Per Day" = "#6ABD45", # Blue-ish # Medium
-                         "Most of the Day" = "#FF6A2D")   # Greenish # High
-# Create a bar plot with custom colors and add percentage labels
+########PLOT#######PLOT#######PLOT#######PLOT#######PLOT#######PLOT#######PLOT#######PLOT#######
 Active_plot <- ggplot(frequencies, aes(x = lifestyle, y = Percentage, fill = Fetch_water)) +
   geom_bar(stat = "identity", position = position_dodge()) +
   geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
             position = position_dodge(width = 0.9), 
-            vjust = -0.25, # Adjust this value as needed to position the labels
-            size = 3) +
-  scale_fill_manual(values = act_Pallete) + # Use custom colors
-  ggtitle("Frequency of Fetch Water Categories Across Lifestyle Categories") +
-  xlab("Lifestyle Category") +
-  ylab("Percentage") +
-  theme_minimal() # Optional: Adds a minimalistic theme to the plot
-##
-##
-png("Active_plot.png", width = 1000, height = 800, units = "px", res = 150)
-# Print the ggplot2 plot to the PNG file
-print(Active_plot)
-# Close the PNG device
-dev.off()
-```
-## Plot Alcohol Frequency
-```{r cars}
-##Transform the Alcohol column
-table(Cleaned_metadata_file$Alcohol)
-Cleaned_metadata_file <- Cleaned_metadata_file %>%
-  mutate(Alcohol_consumption = case_when(
-    Alcohol == "-0.558731289506952" ~ "None",
-    Alcohol == "1.21543190100964" ~ "Moderate",
-    Alcohol == "2.98959509152624" ~ "High"
-  ))
-
-# Calculate the frequencies and percentages
-frequencies <- Cleaned_metadata_file %>%
-  group_by(lifestyle, Alcohol_consumption) %>%
-  summarise(Count = n(), .groups = 'drop') %>%
-  group_by(lifestyle) %>%
-  mutate(Percentage = (Count / sum(Count)) * 100)
-
-frequencies <- frequencies[complete.cases(frequencies$Alcohol_consumption),]
-# Define colors
-colors <- c("None" = "gray", "Moderate" = "#6998ab", "High" = "red")
-# Create a bar plot with custom colors and add percentage labels
-Alcohol_plot <- ggplot(frequencies, aes(x = lifestyle, y = Percentage, fill = Alcohol_consumption)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
-  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
-            position = position_dodge(width = 0.9), 
             vjust = -0.25, size = 3) +
-  scale_fill_manual(values = colors) +
-  ggtitle("Frequency of Alcohol Consumption Across Lifestyle Categories") +
+  scale_fill_manual(values = act_Pallete) +
+  ggtitle("Frequency of Fetch Water Categories Across Lifestyle") +
   xlab("Lifestyle Category") +
   ylab("Percentage") +
   theme_minimal()
 
-png("Alcohol_plot.png", width = 1000, height = 800, units = "px", res = 150)
-# Print the ggplot2 plot to the PNG file
-print(Alcohol_plot)
-# Close the PNG device
+# Save the plot
+png("Active_plot_lifestyle.png", width = 1000, height = 800, units = "px", res = 150)
+print(Active_plot)
 dev.off()
+
+library(ggplot2)
+library(dplyr)
+
+# Filter out "Less than 1 Hour" and calculate counts and percentages
+frequencies <- Cleaned_metadata_file %>%
+  group_by(lifestyle, Fetch_water) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  filter(Fetch_water != "Less than 1 Hour") %>% # Exclude "Less than 1 Hour"
+  mutate(Fetch_water = as.factor(Fetch_water)) %>%
+  group_by(lifestyle) %>%
+  mutate(Total = sum(Count), Percentage = (Count / Total) * 100) %>%
+  ungroup()
+
+# Perform ANOVA between Fetch_water categories within lifestyle
+aov_results <- aov(Percentage ~ lifestyle * Fetch_water, data = frequencies)
+anova_summary <- summary(aov_results)
+
+# Extract the ANOVA p-value for the interaction effect
+anova_p_value <- ifelse(anova_summary[[1]]$'Pr(>F)'['lifestyle:Fetch_water'] < 0.05,
+                        anova_summary[[1]]$'Pr(>F)'['lifestyle:Fetch_water'],
+                        NA)
+
+# Define Activity colors
+act_Pallete <- c("Few Hours Per Day" = "#6ABD45", # Blue-ish
+                 "Most of the Day" = "#FF6A2D")   # Greenish
+
+# Plot the data
+Active_plot <- ggplot(frequencies, aes(x = lifestyle, y = Percentage, fill = Fetch_water)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, size = 3) +
+  scale_fill_manual(values = act_Pallete) +
+  ggtitle("Frequency of Fetch Water Categories Across Lifestyle") +
+  xlab("Lifestyle Category") +
+  ylab("Percentage") +
+  theme_minimal()
+
+# If ANOVA is significant, annotate plot with p-value
+if(!is.na(anova_p_value)) {
+  Active_plot <- Active_plot +
+    annotate("text", x = Inf, y = Inf, label = sprintf("ANOVA p-value: %.3f", anova_p_value), 
+             vjust = 1.5, hjust = 1.5, size = 3.5, color = "black")
+}
+
+# Print the plot
+print(Active_plot)
+
+# Save the plot to a file
+ggsave("Active_Plot_with_ANOVA.png", Active_plot, width = 10, height = 6, dpi = 300)
+
+```
+## Plot ACTIVITY FREQUENCY GENDER SPECIFIC
+```{r cars}
+# Combine Gender and Fetch_water into a new variable for distinct coloring
+frequencies <- frequencies %>%
+  mutate(Gender_Fetch_water = interaction(Gender, Fetch_water),
+         # Ensure readable factor levels
+         Gender_Fetch_water = factor(Gender_Fetch_water, labels = c("Male - Less than 1 Hour", "Female - Less than 1 Hour",
+                                                                    "Male - Few Hours Per Day", "Female - Few Hours Per Day",
+                                                                    "Male - Most of the Day", "Female - Most of the Day")))
+
+# Define a custom color palette with faded colors for females and brighter colors for males
+custom_pallete <- c("Male - Less than 1 Hour" = "#0074D9",    # Bright blue
+                    "Female - Less than 1 Hour" = "#7FDBFF",  # Faded blue
+                    "Male - Few Hours Per Day" = "#2ECC40",   # Bright green
+                    "Female - Few Hours Per Day" = "#01FF70", # Faded green
+                    "Male - Most of the Day" = "#FF4136",     # Bright red
+                    "Female - Most of the Day" = "#FF851B")   # Faded orange
+
+# Create a bar plot with the custom color scheme
+Active_plot <- ggplot(frequencies, aes(x = lifestyle, y = Percentage, fill = Gender_Fetch_water)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25, size = 3) +
+  scale_fill_manual(values = custom_pallete) +
+  ggtitle("Frequency of Fetch Water Categories Across Lifestyle and Gender") +
+  xlab("Lifestyle Category") +
+  ylab("Percentage") +
+  theme_minimal()
+
+# Save the plot
+png("Active_plot_gender_specific_colors.png", width = 1000, height = 800, units = "px", res = 150)
+print(Active_plot)
+dev.off()
+
 ```
 ## Stats
 ```{r pressure, echo=FALSE}
 ## Create New Data-frame and structure it
 Cleaned_metadata_file_subset <- transformed_data[complete.cases(transformed_data$Fetch_water) & transformed_data$Fetch_water != "", ]
 dim(Cleaned_metadata_file_subset)
-table(Cleaned_metadata_file_subset$Fetch_water)
 table(Cleaned_metadata_file_subset$Gender[Cleaned_metadata_file_subset$lifestyle == "Rural"])
-
+table(Cleaned_metadata_file_subset$Fetch_water)
+Cleaned_metadata_file_subset <- Cleaned_metadata_file_subset %>%
+  mutate(Fetch_water = case_when(
+    Fetch_water == "-1.09790439450977" ~ "Low",
+    Fetch_water == "0.480127617095599" ~ "Moderate",
+    Fetch_water == "0.693607547414071" ~ "Intense",
+    TRUE ~ as.character(Fetch_water)
+  ))
+table(Cleaned_metadata_file_subset$Fetch_water)
+Cleaned_metadata_file_subset$Fetch_water <- factor(Cleaned_metadata_file_subset$Fetch_water, 
+                                          levels = c("Low", "Moderate", "Intense"))
 ## BIC & AIC Criterion to select the best model
 ## Check Best Fit model using AIC and BIC
-# Function to fit models and calculate AIC and BIC
-fit_and_evaluate <- function(formula, data) {
-  model <- lm(formula, data = data)
-  aic <- AIC(model)
-  bic <- BIC(model)
-  return(list(model = model, aic = aic, bic = bic))
-}
-response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat", "Pulse_pressure", "Trig", "cvd_risk")
-for (response_var in response_vars) {
-  # Define the formula for the null model and other models
-  formulas <- list(
-    null = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water")),
-    null_fasting = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Fasting")),
-    model_null_alcohol = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol")),
-    null_GenderxAge = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + (Age * Gender)")),
-    model_fasting_alcohol = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Fasting + Alcohol")),
-    model_alcohol_GenderxAge = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol + (Age * Gender)")),
-    model_alcohol_LifexAge = as.formula(paste(response_var, "~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol + (h_sol * Age)"))
+# First, mutate and rename the columns in your dataset
+Cleaned_metadata_file_subset <- Cleaned_metadata_file_subset %>%
+  mutate(Activity_level = ifelse(Fetch_water == "Low", 0, 1),
+         Diet = Diet_MI_items) %>%
+  dplyr::select(-Fetch_water, -Diet_MI_items) %>%
+  rename(Activity_level = Activity_level, Diet = Diet)
+# Assuming 'Cleaned_metadata_file_subset' is your dataset containing the variables.
+# Create a vector of response variable names
+Cleaned_metadata_file_subset <- Cleaned_metadata_file_subset %>%
+  mutate(
+    Age = as.numeric(Age),  # Convert Age to numeric
+    h_sol = as.numeric(h_sol),  # Convert h_sol to numeric
+    Diet = as.numeric(Diet),  # Convert Diet to numeric
+    Activity_level = as.numeric(Activity_level)  # Convert Activity_level to numeric
   )
-  # Fit models and calculate AIC and BIC
-  results <- lapply(formulas, fit_and_evaluate, data = Cleaned_metadata_file_subset)
-  # Find the model with the lowest AIC and BIC
-  aic_values <- sapply(results, function(x) x$aic)
-  ##bic_values <- sapply(results, function(x) x$bic)
-  best_aic_model <- names(results)[which.min(aic_values)]
-  ##best_bic_model <- names(results)[which.min(bic_values)]
-  # Print the AIC and BIC values
-  cat("Response Variable:", response_var, "\n")
-  cat("Best AIC model:", best_aic_model, "AIC:", min(aic_values), "\n")
-  ##cat("Best BIC model:", best_bic_model, "BIC:", min(bic_values), "\n")
-}
+
+table(Cleaned_metadata_file_subset$Activity_level)
+str(Cleaned_metadata_file_subset)
 ```
 ## Data Subsets
-``````{r}
+```{r}
 ##Data Subsets for use in the different models
+whole_minus_smoking <- subset(Cleaned_metadata_file_subset, Cigarette == "0")
 female_data <- subset(Cleaned_metadata_file_subset, Gender == "Female")
 male_data <- subset(Cleaned_metadata_file_subset, Gender == "Male")
 Pastoralist_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Pastoralist")
 Pas_female <- subset(Pastoralist_data, Gender == "Female")
 Pas_male <- subset(Pastoralist_data, Gender == "Male")
 rural_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Rural")
+rural_data_female <- subset(rural_data, Gender == "Female")
+rural_data_male <- subset(rural_data, Gender == "Male")
 Market_data <- subset(Cleaned_metadata_file_subset, lifestyle == "Market_Integrated")
+Market_male <- subset(Market_data, Gender == "Male")
+Market_female <- subset(Market_data, Gender == "Female")
 
+dim(Market_female)
 table(Cleaned_metadata_file_subset$Gender[Cleaned_metadata_file_subset$Alcohol == "0.453244722620242"])
+table(male_data$Cigarette)
+
 
 ```
 ## Linear Regression USING BEST MODEL
 ```{r}
-# Create a vector of response variable names
-response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat","Pulse_pressure", "Trig", "cvd_risk")
+response_vars <- c("HDL", "LDL", "Chol", "BMI", "Body_Fat", "Pulse_pressure", "Trig", "cvd_risk")
+
 # Create an empty data frame to store the results
-results_df <- data.frame(ResponseVariable = character(0), 
-                         Coefficient = numeric(0), 
-                         StdError = numeric(0), 
-                         tValue = numeric(0), 
+results_df <- data.frame(ResponseVariable = character(0),
+                         Coefficient = numeric(0),
+                         StdError = numeric(0),
+                         tValue = numeric(0),
                          PValue = numeric(0),
-                         Predictor = character(0))
+                         Predictor = character(0),
+                         lifestyle = character(0))  # Add a Group column to store contrast groups
+
 # Loop through each response variable
 for (response_var in response_vars) {
   # Define the formula for the linear model
-  formula <- as.formula(paste(response_var,"~ h_sol + Age + Gender + Diet_MI_items + Fetch_water + Alcohol"))
-  # Fit the linear regression model
-  model <- lm(formula, data = Cleaned_metadata_file_subset)
-  # Get the summary of the full model
-  model_summary_full <- summary(model)
-  # Extract the coefficients and standard errors for the full model
-  coefficients_full <- coef(model_summary_full)
-  std_errors_full <- coef(summary(model))[, "Std. Error"]
-  # Get all predictor names (excluding the intercept)
-  predictor_names_full <- names(coefficients_full)[-1]
-  # Create data frames for the results of the full and reduced models
-  results_full <- data.frame(ResponseVariable = response_var,
-                             Coefficient = coefficients_full,
-                             StdError = std_errors_full,
-                             Predictor = rownames(model_summary_full$coefficients))
-  # Append the results to the results data frame
-  results_df <- rbind(results_df, results_full)
-}
-# Print the final message indicating which model performed better overall
-head(results_df)
-# Save the results to a CSV file
-write.csv(results_df, "linear_regression_results.csv", row.names = FALSE)
-```
-## Plot the regression results HEAT PLOT using TILES
-```{r}
-# Sample data (replace with your own data)
-# Here, 'effect_size' is the effect size column, and 'p_value' is the p-value column
-Heat_map <- import("linear_regression_results.csv")
-Heat_map <- Heat_map[Heat_map$Predictor != "(Intercept)", ]
-Heat_map <- Heat_map[Heat_map$Predictor != "Alcohol", ]
-table(Heat_map$Predictor)
-names(Heat_map)[4] <- "tValue"
-names(Heat_map)[5] <- "PValue"
-##########
+  formula <- as.formula(paste(response_var, "~ Age + Gender + Diet + Activity_level + Alcohol"))
 
-custom_palette <- c("blue", "white","yellow", "red")
-#########
-Effect_plot <- ggplot(Heat_map, aes(x = ResponseVariable, y = Predictor, fill = tValue)) +
-  geom_tile() +
-  scale_fill_gradientn(colors = custom_palette,
-                       limits = c(-8, 9),
-                       breaks = seq(-3, 10, by = 3),
-                       na.value = "red") +
-  geom_text(aes(label = ifelse(PValue < 0.05, "p<0.05", "")), vjust = 1.5, size = 3) +
-  labs(x = "Response Variable", y = "Predictor", fill = "Effect Size") +
-  theme_minimal() +
-  theme(legend.position = "top") +
-  ggtitle("Heatmap of Effect Sizes by Predictor")
-# Specify the file name and dimensions
-Effect_plot
-png("Effect_plot.png", width = 1000, height = 800, units = "px", res = 150)
-# Print the ggplot2 plot to the PNG file
-print(Effect_plot)
-# Close the PNG device
-dev.off()
+  # Fit the linear regression model
+  model <- lm(formula, data = rural_data)
+
+  # Get the summary of the full model
+  model_summary <- summary(model)
+
+  # Extract the coefficients, standard errors, t-values, and p-values for predictors
+  coef_df <- data.frame(Coefficient = model_summary$coefficients[, "Estimate"],
+                        StdError = model_summary$coefficients[, "Std. Error"],
+                        tValue = model_summary$coefficients[, "t value"],
+                        PValue = model_summary$coefficients[, "Pr(>|t|)"],
+                        Predictor = rownames(model_summary$coefficients))
+
+  # Filter out the intercept and the 'Alcohol' predictor
+  coef_df <- coef_df[coef_df$Predictor != "(Intercept)" & coef_df$Predictor != "Alcohol",]
+
+  # Add the response variable and group to the data frame
+  coef_df$ResponseVariable <- response_var
+
+  # Append to the results data frame
+  results_df <- rbind(results_df, coef_df)
+}
+
+# Adjust PValues for False Discovery Rate (FDR)
+results_df$AdjPValue <- p.adjust(results_df$PValue, method = "fdr")
+
+head(results_df)
+# Now create the plot
+colors <- c("h_sol" = "#E41A1C",           # Set1 color 1
+            "GenderMale" = "#377EB8",      # Set1 color 2
+            "Age" = "#4DAF4A",             # Set1 color 3
+            "Diet" = "#984EA3",            # Set1 color 4
+            "Activity_level" = "#FF7F00")  # Set1 color 5
+# Convert to factors for plotting
+results_df$ResponseVariable <- factor(results_df$ResponseVariable, levels = unique(results_df$ResponseVariable))
+results_df$Predictor <- factor(results_df$Predictor, levels = c(unique(results_df$Predictor)))
+results_df$Predictor <- factor(results_df$Predictor, levels = c("h_sol", "Age", "GenderMale", "Diet", "Activity_level", "Age:GenderMale"))
+
+# Plot the barplot
+barplot <- ggplot(results_df, aes(x = ResponseVariable, y = Coefficient, fill = Predictor)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7)) +
+  geom_errorbar(aes(ymin = Coefficient - StdError, ymax = Coefficient + StdError),
+                position = position_dodge(width = 0.7), width = 0.25) +
+  labs(x = "Response Variable", y = "Standardized Effect Size") +
+  scale_fill_manual(values = colors) +
+  theme_minimal()
+
+# Add significance markers based on adjusted p-value
+barplot <- barplot + theme(axis.text.x = element_text(), 
+        axis.ticks.x = element_blank()) + 
+        geom_text(data = subset(results_df, AdjPValue < 0.05),
+                               aes(label = "", y = Coefficient + StdError),
+                               position = position_dodge(width = 0.8),
+                               vjust = 8,
+                               hjust = 0,
+                               color = "black",) + coord_flip()
+
+# Print the plot
+print(barplot)
+getwd()
+ggsave("barplot_effect_sizes.png", barplot, width = 8.5, height = 8.5, units= "in",dpi = 600)
+```
+## See which results are significant
+```{r}
+# Filter for significant results
+significant_results <- results_df %>% 
+  filter(AdjPValue < 0.05) %>%
+  dplyr::select(ResponseVariable, Predictor, AdjPValue)
+
+# Print out significant results
+if (nrow(significant_results) > 0) {
+  print("Significant variables and their predictors:")
+  print(significant_results)
+} else {
+  print("No significant results found.")
+}
 ```
 ## QQ Plots
 ```{r}
@@ -389,4 +485,120 @@ for (response_var in response_vars) {
   # Print the QQ plot
   print(qq_plot)
 }
+```
+## Meta-analysis data
+```{r}
+library(forcats)
+data <- import("/Users/bm0211/RegEx/Turkana_CVD/Meta_analysis_Data_and_Results.xlsx", which = "Meta_analysis_Data")
+# Assuming 'data' is your dataframe name
+# Adjust 'data' to your actual dataframe variable name
+names(data)[4]= "Name_of_Cohort"
+names(data)[6]= "Participants_number"
+names(data)[7]= "HDL_Mean"
+names(data)[8]= "HDL_sd"
+names(data)[9]= "LDL_Mean"
+names(data)[10]= "LDL_sd"
+names(data)[11]= "Chol_Mean"
+names(data)[12]= "Chol_sd"
+names(data)[13]= "Trig_Mean"
+names(data)[14]= "Trig_sd"
+names(data)[15]= "Systolic_Mean"
+names(data)[16]= "Systolic_sd"
+names(data)[17]= "Diastolic_Mean"
+names(data)[18]= "Diastolic_sd"
+names(data)[19]= "BMI_mean"
+names(data)[20]= "BMI_sd"
+names(data)[21]= "Body_fat_mean"
+names(data)[22]= "Body_fat_sd"
+data <- data[!is.na(data$Name_of_Cohort),]
+data$HDL_Mean <- as.numeric(data$HDL_Mean)
+data$HDL_sd <- as.numeric(data$HDL_sd)
+data$Participants_number<- as.numeric(data$Participants_number)
+data$LDL_Mean <- as.numeric(data$LDL_Mean)
+data$LDL_sd <- as.numeric(data$LDL_sd)
+data$Chol_Mean <- as.numeric(data$Chol_Mean)
+data$Chol_sd <- as.numeric(data$Chol_sd)
+data$Systolic_Mean <- as.numeric(data$Systolic_Mean)
+data$Systolic_sd <- as.numeric(data$Systolic_sd)
+data$Diastolic_Mean <- as.numeric(data$Diastolic_Mean)
+data$Diastolic_sd <- as.numeric(data$Diastolic_sd)
+data$Trig_Mean<- as.numeric(data$Trig_Mean)
+data$Trig_sd<- as.numeric(data$Trig_sd)
+data$BMI_mean<- as.numeric(data$BMI_mean)
+data$BMI_sd<- as.numeric(data$BMI_sd)
+# Prepare data for plotting, ensuring numeric conversion as necessary
+data$HDL_Mean <- as.numeric(data$HDL_Mean)
+data$LDL_Mean <- as.numeric(data$LDL_Mean)
+data$Chol_Mean <- as.numeric(data$Chol_Mean)
+data$HDL_sd <- as.numeric(data$HDL_sd)
+data$LDL_sd <- as.numeric(data$LDL_sd)
+data$Chol_sd <- as.numeric(data$Chol_sd)
+table(data$Name_of_Cohort)
+# Define the color scheme
+my_colors <- c("deeppink", "darkorchid1", "green", "grey", "cornflowerblue", "yellow2", "red", "slateblue1", "azure2", "chartreuse4", "blue4", "black", "lightslategray", "darkseagreen", "cyan2", "gold", "midnightblue")
+
+# Specifying cohorts for floating labels
+labels_to_include <- c("Tsimane", "Pastoralist_T", "Inuits_all", "Framingham", "UK Biobank")
+# Placeholder for you to add or remove names
+data$Label <- ifelse(data$Name_of_Cohort %in% labels_to_include, as.character(data$Name_of_Cohort), NA)
+
+# Filter data for each plot to remove NAs in specific columns being plotted
+data_HDL <- data %>% filter(!is.na(HDL_Mean) & !is.na(HDL_sd))
+data_LDL <- data %>% filter(!is.na(LDL_Mean) & !is.na(LDL_sd))
+data_Chol <- data %>% filter(!is.na(Chol_Mean) & !is.na(Chol_sd))
+
+# Plot for HDL
+plot_HDL <- ggplot(data_HDL, aes(x = fct_reorder(Name_of_Cohort, HDL_Mean), y = HDL_Mean, color = Ancestry, label = Label)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = HDL_Mean - HDL_sd, ymax = HDL_Mean + HDL_sd), width = 0.2) +
+  labs(title = "HDL Levels across Populations", x = "", y = "HDL Level (mg/dL)") +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_rect(fill = "white", colour = NA),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  scale_color_manual(values = my_colors) +
+  geom_text(aes(label = Label), nudge_x = 0.4, check_overlap = TRUE, hjust = 1.5) + 
+  coord_flip()
+ggsave("plot_HDL.png", plot_HDL, width = 10, height = 15, dpi = 600)
+# Plot for LDL
+plot_LDL <- ggplot(data_LDL, aes(x = fct_reorder(Name_of_Cohort, LDL_Mean), y = LDL_Mean, color = Ancestry, label = Label)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = LDL_Mean - LDL_sd, ymax = LDL_Mean + LDL_sd), width = 0.2) +
+  labs(title = "LDL Levels across Populations", x = "", y = "LDL Level (mg/dL)") +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_rect(fill = "white", colour = NA),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  scale_color_manual(values = my_colors) +
+  geom_text(aes(label = Label), nudge_x = 0.4, check_overlap = TRUE, hjust = 1.5) + coord_flip()
+plot_LDL
+ggsave("plot_LDL.png", plot_LDL, width = 10, height = 15, dpi = 600)
+# Plot for Cholesterol
+plot_Chol <- ggplot(data_Chol, aes(x = fct_reorder(Name_of_Cohort, Chol_Mean), y = Chol_Mean, color = Ancestry, label = Label)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = Chol_Mean - Chol_sd, ymax = Chol_Mean + Chol_sd), width = 0.2) +
+  labs(title = "Cholesterol Levels across Populations", x = "", y = "Cholesterol Level (mg/dL)") +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_rect(fill = "white", colour = NA),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  scale_color_manual(values = my_colors) +
+  geom_text(aes(label = Label), nudge_x = 0.2, check_overlap = TRUE, hjust = 1.5) + coord_flip()
+plot_Chol
+ggsave("plot_Chol.png", plot_Chol, width = 10, height = 15, dpi = 600)
+# Arrange the plots side by side
+grid.arrange(plot_HDL, plot_LDL, plot_Chol, ncol = 3)
+
+dim(Cleaned_metadata_file_subset)
+colnames(Cleaned_metadata_file_subset)
+table(Cleaned_metadata_file_subset$lifestyle)
+# Load necessary libraries
+library(ggplot2)
+
+
+table(Cleaned_metadata_file_subset$Alcohol)
+str(Cleaned_metadata_file_subset)
 ```

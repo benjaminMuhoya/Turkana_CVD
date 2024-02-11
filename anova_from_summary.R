@@ -1,5 +1,6 @@
-
 setwd("/Users/bm0211/RegEx/Turkana_CVD")
+library(ggplot2)
+library(readxl)
 ## Function to Run ANOVA on several groups ##################
 FNONCT <- function(x,df1,df2,prob, interval=c(0,10000), my.tol=0.000001){
 		temp <- function(ncp) pf(x,df1,df2,ncp) - prob
@@ -204,39 +205,98 @@ ind.oneway.second (m, sd, n)
 ############
 ## Write the results in the Meta_analysis_data_file) then Graph
 ##########
-
-library(ggplot2)
-my_colors_P <- c("#FAD510", "#008080", "lightpink", "green","#FF2400",
-  "cyan", "#90A959", "#9D858D", "#A4243B", "#6495ED", "#5B1A18", "#1B2021"
+# Define your colors
+# Define color palette
+my_colors_P <- c(
+  "#FAD510", # Mustard Yellow (The Royal Tenenbaums)
+  "#008080", # Teal
+  "lightpink", # pink
+  "green", # Dusty Lavender (Hotel Chevalier)
+  "#FF2400", # Scarlet
+  "cyan", # cyan
+  "#90A959", # Olive Green (Isle of Dogs)
+  "#9D858D", # Mauve (Castello Cavalcanti)
+  "#A4243B", # Deep Carmine (Mr. Fox's Tail)
+  "#6495ED", # cornflowerblue
+  "#5B1A18", # Maroon (The Grand Budapest Hotel)
+  "white", # Off Black (The Life Aquatic with Steve Zissou)
+  "#E9A368", # Salmon Orange (Fantastic Mr. Fox)
+  "#81A3A7", # Steel Blue (The Life Aquatic with Steve Zissou)
+  "#FF00FF", # Magenta  
+  "#C6C8CA" # Light Gray (The French Dispatch)
 )
-## Graphs ########################################################
-result_anova = import("/Users/bm0211/RegEx/Turkana_CVD/Meta_analysis_Data_and_Results.xlsx", sheet="ResultsLDL") ## For LDL
-head(result_anova)
+# Load the data
+result_anova <- import("/Users/bm0211/RegEx/Turkana_CVD/Meta_analysis_Data_and_Results.xlsx", sheet = "ResultsLDL")
 names(result_anova)[1] = "Pairwise"
-##
-result_anova$Ancestry <- factor(result_anova$Ancestry)
-BoxPlot_ANOVA_meta <-ggplot(result_anova, aes(x= reorder(Pairwise, es), y = es))+ geom_point(aes(color = factor(Ancestry)), size=8) +scale_color_manual(values = my_colors_P)+ geom_errorbar(aes(ymin=lower, ymax=upper, width=.2)) +
-xlab("Comparison") + ylab("Standardized difference with lower and upper CI") + ggtheme + coord_flip() + geom_hline(yintercept=-1) + geom_hline(yintercept=0.05) + labs(title =  "LDL Distribution Differences", color = "Ancestry")
-##Save file as PNG
-ggsave("ANOVA_LDL.png", BoxPlot_ANOVA_meta, width = 30, height = 50, units = "cm", dpi = 300)
 
+# Ensure 'Ancestry' is a factor
+result_anova$Ancestry <- factor(result_anova$Ancestry)
+# Create the plot
+BoxPlot_ANOVA_meta <- ggplot(result_anova, aes(x= reorder(Pairwise, -es), y = es)) +
+  geom_point(aes(fill = factor(Ancestry)), size=5) +
+  geom_errorbar(aes(ymin=lower, ymax=upper, width=.2)) +
+  xlab("Comparison") + ylab("Standardized difference with lower and upper CI") + coord_flip() +
+  geom_hline(yintercept=-1) + geom_hline(yintercept=0.05) +
+  labs(title =  "LDL Distribution Differences", color = "Ancestry") +
+  scale_fill_manual(values = my_colors_P) +
+  geom_label_repel(aes(label = Pairwise, fill = factor(Ancestry)),
+    box.padding = 0.3,
+    point.padding = 0.5,
+    segment.color = "grey50",
+    max.overlaps = 15
+  ) + # Add labels
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+# Print the plot
+BoxPlot_ANOVA_meta
+# Save file as PNG
+ggsave("ANOVA_LDL.png", BoxPlot_ANOVA_meta, width = 8.5, height = 8.5, units = "in", dpi = 600)
+getwd()
 ## Graphs ####################################################################################
 result_anova = import("/Users/bm0211/RegEx/Turkana_CVD/Meta_analysis_Data_and_Results.xlsx", sheet="ANOVA ResultsHDL") ## For HDL
 names(result_anova)[1] = "Pairwise"
 ##
 result_anova$Ancestry <- factor(result_anova$Ancestry)
-BoxPlot_ANOVA_meta <-ggplot(result_anova, aes(x= reorder(Pairwise, es), y = es))+ geom_point(aes(color = factor(Ancestry)), size=8) +scale_color_manual(values = my_colors_P)+ geom_errorbar(aes(ymin=lower, ymax=upper, width=.2)) +
-  xlab("Comparison") + ylab("Standardized difference with lower and upper CI") + ggtheme + coord_flip() + geom_hline(yintercept=1) + geom_hline(yintercept=0.23) + labs(title =  "HDL Distribution Differences", color = "Ancestry")
+BoxPlot_ANOVA_meta <- ggplot(result_anova, aes(x= reorder(Pairwise, -es), y = es)) +
+  geom_point(aes(fill = factor(Ancestry)), size=5) +
+  scale_fill_manual(values = my_colors_P) +
+  geom_errorbar(aes(ymin=lower, ymax=upper, width=.2)) +
+  xlab("Comparison") + ylab("Standardized difference with lower and upper CI") + coord_flip() +
+  geom_hline(yintercept=1) + geom_hline(yintercept=0.23) +
+  labs(title =  "HDL Distribution Differences", color = "Ancestry") +
+  geom_label_repel(aes(label = Pairwise, fill = factor(Ancestry)),
+    box.padding = 0.3,
+    point.padding = 0.5,
+    segment.color = "grey50",
+    max.overlaps = 15
+  ) +  # Add labels
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+# Print the plot
+BoxPlot_ANOVA_meta
 ##Save file as PNG
-ggsave("ANOVA_HDL.png", BoxPlot_ANOVA_meta, width = 30, height = 50, units = "cm", dpi = 300)
+ggsave("ANOVA_HDL.png", BoxPlot_ANOVA_meta, width = 8.5, height = 8.5, units = "in", dpi = 600)
 
 ## Graphs ###################################################################################
 result_anova = import("/Users/bm0211/RegEx/Turkana_CVD/Meta_analysis_Data_and_Results.xlsx", sheet="CholResults") ## For Chol
 names(result_anova)[1] = "Pairwise"
 ##
 result_anova$Ancestry <- factor(result_anova$Ancestry)
-BoxPlot_ANOVA_meta <-ggplot(result_anova, aes(x= reorder(Pairwise, es), y = es))+ geom_point(aes(color = factor(Ancestry)), size=8) +scale_color_manual(values = my_colors_P)+ geom_errorbar(aes(ymin=lower, ymax=upper, width=.2)) +
-  xlab("Comparison") + ylab("Standardized difference with lower and upper CI") + ggtheme + coord_flip() + geom_hline(yintercept=-1) + geom_hline(yintercept=0.03) + labs(title =  "Cholesterol Distribution Differences", color = "Ancestry")
+BoxPlot_ANOVA_meta <-ggplot(result_anova, aes(x= reorder(Pairwise, -es), y = es)) +
+  geom_point(aes(fill = factor(Ancestry)), size=8) +
+  scale_fill_manual(values = my_colors_P) +
+  geom_errorbar(aes(ymin=lower, ymax=upper, width=.2)) +
+  xlab("Comparison") + ylab("Standardized difference with lower and upper CI") + coord_flip() +
+  geom_hline(yintercept=1) + geom_hline(yintercept=0.2) +
+  labs(title =  "Cholesterol Distribution Differences", color = "Ancestry") +
+  geom_label_repel(aes(label = Pairwise, fill = factor(Ancestry)),
+    color = "black",
+    box.padding = 0.7,
+    point.padding = 0.5,
+    segment.color = "grey50",
+    max.overlaps = 15
+  ) + # Add labels
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+# Print the plot
+BoxPlot_ANOVA_meta
 ##Save file as PNG
-ggsave("ANOVA_chol.png", BoxPlot_ANOVA_meta, width = 30, height = 50, units = "cm", dpi = 300)
+ggsave("ANOVA_chol.png", BoxPlot_ANOVA_meta, width = 8.5, height = 8.5, units = "in", dpi = 600)
 
